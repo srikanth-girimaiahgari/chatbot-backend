@@ -99,8 +99,8 @@ app.post("/chat", async (req, res) => {
       .replace(/[^a-z0-9 ]/g, "")
       .split(" ")
       .filter(w => w.length > 3)
-.sort((a, b) => b.length - a.length);
-
+      .sort((a, b) => b.length - a.length);
+      .filter(w => !["products", "product"].includes(w));
     console.log("Search words:", words);
 
     let faqMatch = null;
@@ -130,8 +130,8 @@ app.post("/chat", async (req, res) => {
     }
 
     // Check products if message mentions product keywords
-    const productKeywords = ["product", "price", "cost", "stock",
-      "available", "buy", "purchase", "sell", "have"];
+    const productKeywords = ["product", "stock", "available", 
+      "buy", "purchase", "sell", "have", "list", "show", "what"];
     const mentionsProduct = productKeywords.some((word) =>
       message.toLowerCase().includes(word)
     );
