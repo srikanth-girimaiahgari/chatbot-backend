@@ -94,92 +94,63 @@ app.post("/chat", async (req, res) => {
       return res.json({ reply });
     }
 
-    // Check FAQs first
-    const words = message.toLowerCase()
-      .replace(/[^a-z0-9 ]/g, "")
-      .split(" ")
-      .filter(w => w.length > 3 && !["products", "product"].includes(w))
-.sort((a, b) => b.length - a.length);
-    console.log("Search words:", words);
-
-    let faqMatch = null;
-    for (const word of words) {
-      const { data } = await supabase
-        .from("faqs")
-        .select("*")
-        .ilike("question", `%${word}%`)
-        .limit(1);
-      console.log("Searching FAQ for:", word, "Result:", data);
-      if (data && data.length > 0) {
-        faqMatch = data[0];
-        break;
-      }
-    }
-
-    if (faqMatch) {
-      const reply = faqMatch.answer;
-
-      await supabase.from("chat_messages").insert({
-        session_id,
-        role: "assistant",
-        content: reply,
-      });
-
-      return res.json({ reply });
-    }
-
-    // Check products if message mentions product keywords
-    const productKeywords = ["product", "stock", "available", 
-      "buy", "purchase", "sell", "have", "list", "show", "what"];
-    const mentionsProduct = productKeywords.some((word) =>
-      message.toLowerCase().includes(word)
-    );
-
-    let productContext = "";
-    if (mentionsProduct) {
-      const { data: products } = await supabase
-        .from("products")
-        .select("*")
-        .eq("in_stock", true);
-
-      if (products && products.length > 0) {
-        productContext = "Our available products are:\n" +
-          products.map((p) =>
-            `- ${p.name}: $${p.price}`
-          ).join("\n");
-      }
-    }
+  
 
     // Call Claude API
-    const systemPrompt = `You are a helpful customer support assistant for a digital products business that sells tools to physical product sellers. 
-When listing products, always format them as a numbered list with name and price only.
-Keep responses concise and under 100 words.
-Never cut off a list midway — always complete it.
-${productContext ? `\n${productContext}` : ""}`;
-    console.log("Product context:", productContext);
-    console.log("System prompt:", systemPrompt);
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 500,
-      messages: [{ role: "user", content: message }],
-      system: systemPrompt,
-    });
+    // Fetch all products and FAQs to give Claude full context
+const { data: products } = await supabase
+  .from("products")
+  .select("*")
+  .eq("in_stock", true);
 
-    const reply = response.content[0].text;
+const { data: faqs } = await supabase
+  .from("faqs")
+  .select("*");
 
-    await supabase.from("chat_messages").insert({
-      session_id,
-      role: "assistant",
-      content: reply,
-    });
+const productList = products && products.length > 0
+  ? "PRODUCTS:\n" + products.map(p =>
+      `- ${p.name} ($${p.price}): ${p.description}`
+    ).join("\n")
+  : "";
 
-    res.json({ reply });
+const faqList = faqs && faqs.length > 0
+  ? "FAQS:\n" + faqs.map(f =>
+      `Q: ${f.question}\nA: ${f.answer}`
+    ).join("\n\n")
+  : "";
 
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const systemPrompt = `You are a friendly and helpful customer support assistant for a digital products business that sells tools to physical product sellers.
+
+Use the following information to answer customer questions accurately:
+
+${productList}
+
+${faqList}
+
+Guidelines:
+- Always answer from the product and FAQ information provided above
+- When listing products always show all of them with prices
+- Keep responses concise and friendly
+- If someone asks to talk to a human reply exactly: "I'm connecting you to our team right now. Someone will be with you shortly!"
+- Never make up information not provided above`;
+
+const response = await anthropic.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 500,
+  messages: [{ role: "user", content: message }],
+  system: systemPrompt,
 });
 
+const reply = response.content[0].text;
+
+await supabase.from("chat_messages").insert({
+  session_id,
+  role: "assistant",
+  content: reply,
+});
+
+res.json({ reply });
+       
 // ─── HANDOFF QUEUE ───────────────────────────────────────
 app.get("/handoff", async (req, res) => {
   try {
