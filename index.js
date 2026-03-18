@@ -4,6 +4,7 @@ const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
 const Anthropic = require("@anthropic-ai/sdk");
 const { Resend } = require("resend");
+const { parsePhoneNumber, isValidPhoneNumber } = require("libphonenumber-js");
 
 const app = express();
 app.use(cors());
@@ -12,6 +13,20 @@ app.use(express.json());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+function isValidPhone(number) {
+  try {
+    return isValidPhoneNumber(number);
+  } catch (e) {
+    return false;
+  }
+}
+
+function isValidEmail(email) {
+  return emailRegex.test(email.trim());
+}
 
 app.get("/", (req, res) => {
   res.json({ status: "Chatbot backend is running!" });
@@ -38,9 +53,6 @@ app.post("/chat", async (req, res) => {
   try {
     await supabase.from("chat_messages").insert({ session_id, role: "user", content: message });
 
-    const phoneRegex = /(\+?\d[\d\s\-]{7,}\d)/;
-    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-
     const handoffTriggers = ["talk to a human", "speak to a human", "human agent", "real person", "talk to someone", "contact support"];
     const purchaseTriggers = ["i want to buy", "i would like to buy", "purchase", "how do i buy", "how to buy", "i want to order", "ready to buy", "want to purchase"];
 
@@ -53,54 +65,6 @@ app.post("/chat", async (req, res) => {
       .eq("session_id", session_id)
       .eq("reason", "purchase_intent")
       .maybeSingle();
-
-    if (existingHandoff && existingHandoff.contact_method && !existingHandoff.contact_detail) {
-      const phoneMatch = message.match(phoneRegex);
-      const emailMatch = message.match(emailRegex);
-
-      if (existingHandoff.contact_method === "whatsapp" || existingHandoff.contact_method === "text") {
-        if (phoneMatch) {
-          const contactDetail = phoneMatch[0].trim();
-          await supabase.from("handoff_requests").update({ contact_detail: contactDetail }).eq("session_id", session_id).eq("reason", "purchase_intent");
-          await resend.emails.send({
-            from: "onboarding@resend.dev",
-            to: process.env.ALERT_EMAIL,
-            subject: "Customer Contact Detail Received!",
-            text: "Contact method: " + existingHandoff.contact_method + "\nContact: " + contactDetail + "\nSession: " + session_id,
-          });
-          const reply = "Thank you! Our team will " + (existingHandoff.contact_method === "whatsapp" ? "message you on WhatsApp at " : "text you at ") + contactDetail + " within minutes!";
-          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
-          return res.json({ reply });
-        }
-      }
-
-      if (existingHandoff.contact_method === "phone") {
-        const phoneMatch2 = message.match(phoneRegex);
-        if (phoneMatch2) {
-          const contactDetail = phoneMatch2[0].trim();
-          await supabase.from("handoff_requests").update({ contact_detail: contactDetail }).eq("session_id", session_id).eq("reason", "purchase_intent");
-          const reply = "Got it! What is the best time to call you at " + contactDetail + "?";
-          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
-          return res.json({ reply });
-        }
-      }
-
-      if (existingHandoff.contact_method === "email") {
-        if (emailMatch) {
-          const contactDetail = emailMatch[0];
-          await supabase.from("handoff_requests").update({ contact_detail: contactDetail }).eq("session_id", session_id).eq("reason", "purchase_intent");
-          await resend.emails.send({
-            from: "onboarding@resend.dev",
-            to: process.env.ALERT_EMAIL,
-            subject: "Customer Email Received!",
-            text: "Customer email: " + contactDetail + "\nSession: " + session_id,
-          });
-          const reply = "Thank you! Our team will email you at " + contactDetail + " with payment details shortly!";
-          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
-          return res.json({ reply });
-        }
-      }
-    }
 
     if (existingHandoff && existingHandoff.contact_method === "phone" && existingHandoff.contact_detail && !existingHandoff.preferred_time) {
       await supabase.from("handoff_requests").update({ preferred_time: message }).eq("session_id", session_id).eq("reason", "purchase_intent");
@@ -115,21 +79,76 @@ app.post("/chat", async (req, res) => {
       return res.json({ reply });
     }
 
+    if (existingHandoff && existingHandoff.contact_method && !existingHandoff.contact_detail) {
+      const rawMessage = message.trim();
+
+      if (existingHandoff.contact_method === "whatsapp" || existingHandoff.contact_method === "text") {
+        if (isValidPhone(rawMessage)) {
+          await supabase.from("handoff_requests").update({ contact_detail: rawMessage }).eq("session_id", session_id).eq("reason", "purchase_intent");
+          await resend.emails.send({
+            from: "onboarding@resend.dev",
+            to: process.env.ALERT_EMAIL,
+            subject: "Customer Contact Detail Received!",
+            text: "Contact method: " + existingHandoff.contact_method + "\nContact: " + rawMessage + "\nSession: " + session_id,
+          });
+          const reply = "Thank you! Our team will " + (existingHandoff.contact_method === "whatsapp" ? "message you on WhatsApp at " : "text you at ") + rawMessage + " within minutes!";
+          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
+          return res.json({ reply });
+        } else {
+          const reply = "That does not look like a valid phone number. Please include your country code and full number, for example: +91 9876543210 or +1 2025551234";
+          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
+          return res.json({ reply });
+        }
+      }
+
+      if (existingHandoff.contact_method === "phone") {
+        if (isValidPhone(rawMessage)) {
+          await supabase.from("handoff_requests").update({ contact_detail: rawMessage }).eq("session_id", session_id).eq("reason", "purchase_intent");
+          const reply = "Got it! What is the best time to call you at " + rawMessage + "?";
+          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
+          return res.json({ reply });
+        } else {
+          const reply = "That does not look like a valid phone number. Please include your country code and full number, for example: +91 9876543210 or +1 2025551234";
+          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
+          return res.json({ reply });
+        }
+      }
+
+      if (existingHandoff.contact_method === "email") {
+        if (isValidEmail(rawMessage)) {
+          await supabase.from("handoff_requests").update({ contact_detail: rawMessage }).eq("session_id", session_id).eq("reason", "purchase_intent");
+          await resend.emails.send({
+            from: "onboarding@resend.dev",
+            to: process.env.ALERT_EMAIL,
+            subject: "Customer Email Received!",
+            text: "Customer email: " + rawMessage + "\nSession: " + session_id,
+          });
+          const reply = "Thank you! Our team will email you at " + rawMessage + " with payment details shortly!";
+          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
+          return res.json({ reply });
+        } else {
+          const reply = "That does not look like a valid email address. Please try again like this: name@example.com";
+          await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
+          return res.json({ reply });
+        }
+      }
+    }
+
     if (existingHandoff && !existingHandoff.contact_method) {
       const msg = message.toLowerCase();
       let reply = "";
       if (msg.includes("1") || msg.includes("whatsapp")) {
         await supabase.from("handoff_requests").update({ contact_method: "whatsapp" }).eq("session_id", session_id).eq("reason", "purchase_intent");
-        reply = "Please share your WhatsApp number and our team will contact you within minutes!";
+        reply = "Please share your WhatsApp number with country code, for example: +91 9876543210";
       } else if (msg.includes("2") || msg.includes("text")) {
         await supabase.from("handoff_requests").update({ contact_method: "text" }).eq("session_id", session_id).eq("reason", "purchase_intent");
-        reply = "Please share your mobile number and our team will text you shortly!";
+        reply = "Please share your mobile number with country code, for example: +91 9876543210";
       } else if (msg.includes("3") || msg.includes("phone")) {
         await supabase.from("handoff_requests").update({ contact_method: "phone" }).eq("session_id", session_id).eq("reason", "purchase_intent");
-        reply = "Please share your phone number and we will arrange a call!";
+        reply = "Please share your phone number with country code, for example: +91 9876543210";
       } else if (msg.includes("4") || msg.includes("email")) {
         await supabase.from("handoff_requests").update({ contact_method: "email" }).eq("session_id", session_id).eq("reason", "purchase_intent");
-        reply = "Please share your email address and our team will send you the payment details!";
+        reply = "Please share your email address, for example: name@example.com";
       } else {
         reply = "Please choose one of these options:\n\n1. WhatsApp\n2. Text message\n3. Phone call\n4. Email";
       }
