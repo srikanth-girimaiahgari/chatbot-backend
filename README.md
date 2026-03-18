@@ -1,42 +1,73 @@
-# 🤖 Chatbot Backend — Digital Products Business
+# 🤖 Chatbot Backend — AI-Powered Digital Products Assistant
 
-An AI-powered chatbot backend built for digital product sellers. Handles product search, FAQ matching, and human agent handoff — deployed on Railway with Supabase and Claude AI.
+A production-ready AI chatbot backend for a digital products business targeting physical product sellers. Built with Node.js, deployed on Railway, powered by Claude AI.
 
 ---
 
-## 📌 Project Overview
+## 📌 Project Status
 
-This is the backend API for a business chatbot that helps customers:
-- Search and discover digital products
-- Get instant answers from a pre-built FAQ database
-- Request a live human agent when needed
+| Item | Status |
+|------|--------|
+| Deployment | ✅ Live on Railway |
+| All Features | ✅ Passing |
+| Git Branches | `main` (production) + `development` |
+| Monthly Cost | ~$1–5 (testing) |
 
-Built as a single Node.js service for testing, with a clear path to microservices for production.
+**Live URL:** `https://chatbot-backend-production-c000.up.railway.app`
+
+---
+
+## ✨ Features
+
+### Core Chatbot
+- AI-powered responses using Claude Sonnet API
+- Full conversation context — last 6 messages sent with every request
+- Product search from live Supabase database
+- FAQ matching before calling AI (cost optimisation)
+- Short, precise responses (max 200 tokens)
+
+### Human Handoff
+- Detects trigger phrases: "talk to a human", "human agent", etc.
+- Logs request to `handoff_requests` table in Supabase
+- Sends instant email alert via Resend API
+
+### Purchase Flow
+- Detects purchase intent from 15+ trigger phrases
+- Offers 4 contact method options: WhatsApp, Text, Phone, Email
+- Validates phone numbers using **libphonenumber-js** (Google standard)
+- Validates email addresses using RFC-compliant regex
+- Handles change of mind — customer can switch method at any point
+- For phone calls: collects preferred call time separately
+- Saves all contact details to `handoff_requests` table
+- Sends agent email alert with customer contact details
 
 ---
 
 ## 🧱 Tech Stack
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Runtime | Node.js | Backend engine |
-| Framework | Express.js | API routing |
-| Database | Supabase (PostgreSQL) | Products, FAQs, chat logs |
-| AI | Claude API (Anthropic) | Intelligent responses |
-| Email | Resend | Human handoff alerts |
-| Deployment | Railway | Cloud hosting |
-| Frontend (Phase 5) | Vercel | Chat widget UI |
+| Package | Purpose |
+|---------|---------|
+| `express` | REST API framework |
+| `@supabase/supabase-js` | Database connector |
+| `@anthropic-ai/sdk` | Claude AI connector |
+| `resend` | Email delivery |
+| `libphonenumber-js` | Phone number validation (Google standard) |
+| `dotenv` | Environment variable management |
+| `cors` | Cross-origin resource sharing |
 
 ---
 
-## 🗄️ Database Tables
+## 🗄️ Database Tables (Supabase)
 
 | Table | Purpose |
 |-------|---------|
-| `products` | Digital product catalog with pricing and stock status |
+| `products` | Digital product catalog with pricing and stock |
 | `faqs` | Pre-written question and answer pairs |
-| `chat_messages` | Full conversation history logs |
-| `handoff_requests` | Queue of customers requesting a human agent |
+| `chat_messages` | Full conversation history per session |
+| `handoff_requests` | Human agent queue with contact details |
+
+### handoff_requests columns:
+`id`, `session_id`, `reason`, `status`, `whatsapp`, `product_interest`, `contact_method`, `contact_detail`, `preferred_time`, `created_at`
 
 ---
 
@@ -46,7 +77,7 @@ Built as a single Node.js service for testing, with a clear path to microservice
 ```
 GET /
 ```
-Returns server status. Used to verify the backend is running.
+Returns server status.
 
 ---
 
@@ -56,20 +87,15 @@ GET /products?search=keyword
 ```
 Searches the product catalog by keyword.
 
-**Example:**
-```
-GET /products?search=inventory
-```
-
 ---
 
 ### Chat
 ```
 POST /chat
 ```
-Main chatbot endpoint. Processes customer messages and returns a reply.
+Main chatbot endpoint.
 
-**Request body:**
+**Request:**
 ```json
 {
   "message": "do you offer refunds?",
@@ -84,13 +110,16 @@ Main chatbot endpoint. Processes customer messages and returns a reply.
 }
 ```
 
-**How it works — in order:**
-1. Saves user message to `chat_messages` table
-2. Checks if user wants a human agent
-3. Searches `faqs` table for a keyword match
-4. If no FAQ match — calls Claude AI with business context
-5. Saves bot reply to `chat_messages` table
-6. Returns reply to user
+**Processing order:**
+1. Save user message to `chat_messages`
+2. Check for human handoff triggers
+3. Check for existing purchase flow (contact method → contact detail → call time)
+4. Check for new purchase intent
+5. Load all products + FAQs from Supabase
+6. Load last 6 messages for conversation context
+7. Call Claude API with full context
+8. Save reply to `chat_messages`
+9. Return reply
 
 ---
 
@@ -98,44 +127,51 @@ Main chatbot endpoint. Processes customer messages and returns a reply.
 ```
 GET /handoff
 ```
-Returns all pending human handoff requests. Used by the agent dashboard.
+Returns all pending human handoff requests.
+
+---
+
+## 🛒 Purchase Flow
+
+```
+Customer: "I want to buy Inventory Tracker Pro"
+Bot:  "How would you prefer our team to contact you?
+       1. WhatsApp  2. Text  3. Phone  4. Email"
+
+Customer: "1"
+Bot:  "Please share your WhatsApp number with country code, e.g. +91 9876543210"
+
+Customer: "+91 9876543210"   ← validated by libphonenumber-js
+Bot:  "Thank you! Our team will message you on WhatsApp within minutes!"
+Agent: receives email with contact details
+```
+
+**Change of mind:** Customer can type 1, 2, 3 or 4 at any point to switch contact method.
 
 ---
 
 ## ⚙️ Environment Variables
 
-Create a `.env` file in the root directory with these values:
-
-```
+```env
 SUPABASE_URL=https://xxxxxx.supabase.co
-SUPABASE_KEY=your_supabase_publishable_key
-ANTHROPIC_API_KEY=your_claude_api_key
+SUPABASE_KEY=sb_publishable_xxxxxx
+ANTHROPIC_API_KEY=sk-ant-api03-xxxxxx
 ALERT_EMAIL=your@gmail.com
-RESEND_API_KEY=your_resend_api_key
+RESEND_API_KEY=re_xxxxxx
 PORT=3000
 ```
 
-> ⚠️ Never commit your `.env` file to GitHub. It is listed in `.gitignore`.
+> ⚠️ Never commit `.env` to GitHub. It is listed in `.gitignore`.
 
 ---
 
 ## 🚀 Local Setup
 
-**Step 1 — Clone the repository:**
 ```bash
 git clone git@github.com:yourusername/chatbot-backend.git
 cd chatbot-backend
-```
-
-**Step 2 — Install dependencies:**
-```bash
 npm install
-```
-
-**Step 3 — Create your `.env` file and fill in your keys**
-
-**Step 4 — Start the server:**
-```bash
+# Create .env and fill in your values
 node index.js
 ```
 
@@ -143,60 +179,48 @@ Server runs on `http://localhost:3000`
 
 ---
 
+## 🌿 Git Workflow
+
+```bash
+# Always develop on development branch
+git checkout development
+
+# After testing locally — merge to main
+git checkout main
+git merge development
+git push origin main
+# Railway auto-deploys from main
+```
+
+---
+
 ## ☁️ Deployment
 
-This project is deployed on **Railway** via GitHub integration.
+Deployed on **Railway** via GitHub integration. Every push to `main` triggers automatic redeployment.
 
-Every push to the `main` branch triggers an automatic redeployment.
-
-**Live URL:**
-```
-https://chatbot-backend-production-c000.up.railway.app
-```
+Environment variables are stored in Railway Variables dashboard — never in code.
 
 ---
 
-## 🧪 Testing
-
-Use **Postman** to test all endpoints.
-
-**Test 1 — Product search:**
-```json
-POST /chat
-{
-  "message": "what products do you offer?",
-  "session_id": "test-001"
-}
-```
-
-**Test 2 — FAQ matching:**
-```json
-POST /chat
-{
-  "message": "do you offer refunds?",
-  "session_id": "test-001"
-}
-```
-
-**Test 3 — Human handoff:**
-```json
-POST /chat
-{
-  "message": "talk to a human",
-  "session_id": "test-001"
-}
-```
-
----
-
-## ✅ Test Results
+## 🧪 Test Results
 
 | Feature | Status |
 |---------|--------|
+| Health check | ✅ Passing |
 | Product search | ✅ Passing |
 | FAQ matching | ✅ Passing |
-| Human handoff (Supabase logging) | ✅ Passing |
-| Human handoff (Email alert) | 🔧 In progress |
+| Claude AI responses | ✅ Passing |
+| Conversation context | ✅ Passing |
+| Human handoff (Supabase) | ✅ Passing |
+| Human handoff (Email) | ✅ Passing |
+| Purchase intent detection | ✅ Passing |
+| WhatsApp contact flow | ✅ Passing |
+| Text message contact flow | ✅ Passing |
+| Phone call + preferred time flow | ✅ Passing |
+| Email contact flow | ✅ Passing |
+| Phone validation (libphonenumber) | ✅ Passing |
+| Email validation (regex) | ✅ Passing |
+| Change of mind handling | ✅ Passing |
 
 ---
 
@@ -205,9 +229,13 @@ POST /chat
 - [x] Phase 1 — Accounts and tools setup
 - [x] Phase 2 — Database setup (Supabase)
 - [x] Phase 3 — Backend API (Railway)
-- [ ] Phase 4 — Chat widget UI (Vercel)
-- [ ] Phase 5 — Full system testing
-- [ ] Phase 6 — Production deployment with custom domain
+- [x] Phase 4 — Chat widget UI (Vercel)
+- [x] Phase 5 — Full system testing
+- [ ] Phase 6 — Replace dummy data with real products
+- [ ] Phase 7 — Custom domain
+- [ ] Phase 8 — Production security lockdown
+- [ ] Phase 9 — Cost optimisation (caching)
+- [ ] Phase 10 — Agent dashboard
 
 ---
 
@@ -218,16 +246,15 @@ chatbot-backend/
 ├── index.js          # Main backend application
 ├── package.json      # Project dependencies
 ├── package-lock.json # Dependency lock file
-├── .gitignore        # Files excluded from GitHub
+├── .gitignore        # Excludes .env and node_modules
 └── .env              # Secret keys (never committed)
 ```
 
 ---
 
-## 👤 Author
+## 🔗 Related Repository
 
-Built from scratch as a test deployment for a digital products business chatbot.
-Documented step by step from zero to operational.
+- [chatbot-widget](https://github.com/yourusername/chatbot-widget) — Chat widget UI on Vercel
 
 ---
 
