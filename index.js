@@ -62,7 +62,7 @@ app.post("/chat", async (req, res) => {
     await supabase.from("chat_messages").insert({ session_id, role: "user", content: message });
 
     const handoffTriggers = ["talk to a human", "speak to a human", "human agent", "real person", "talk to someone", "contact support"];
-    const purchaseTriggers = ["i want to buy", "i would like to buy", "purchase", "how do i buy", "how to buy", "i want to order", "ready to buy", "want to purchase"];
+    const purchaseTriggers = ["i want to buy", "i would like to buy", "purchase", "how do i buy", "how to buy", "i want to order", "ready to buy", "want to purchase", "can i buy", "id like to buy", "i will buy", "i want to purchase", "buy it", "buy this", "get it", "i want it", "how do i get"];
 
     const wantsHuman = handoffTriggers.some(function(t) { return message.toLowerCase().includes(t); });
     const wantsToBuy = purchaseTriggers.some(function(t) { return message.toLowerCase().includes(t); });
@@ -225,12 +225,25 @@ app.post("/chat", async (req, res) => {
       ? "FAQS:\n" + faqs.map(function(f) { return "Q: " + f.question + "\nA: " + f.answer; }).join("\n\n")
       : "";
 
-    const systemPrompt = "You are a friendly customer support assistant for a digital products business that sells tools to physical product sellers.\n\nUse this information to answer questions:\n\n" + productList + "\n\n" + faqList + "\n\nGuidelines:\n- Keep all responses under 3 sentences\n- Be direct and concise\n- When listing products show name and price only\n- Never make up information not provided above";
+    const { data: recentChats } = await supabase
+      .from("chat_messages")
+      .select("*")
+      .eq("session_id", session_id)
+      .order("created_at", { ascending: false })
+      .limit(6);
+
+    const conversationHistory = recentChats
+      ? recentChats.reverse().map(function(m) {
+          return { role: m.role, content: m.content };
+        })
+      : [{ role: "user", content: message }];
+
+    const systemPrompt = "You are a friendly customer support assistant for a digital products business that sells tools to physical product sellers.\n\nUse this information to answer questions:\n\n" + productList + "\n\n" + faqList + "\n\nGuidelines:\n- Keep all responses under 3 sentences\n- Be direct and concise\n- When listing products show name and price only\n- Never make up information not provided above\n- Remember context from previous messages in the conversation";
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 200,
-      messages: [{ role: "user", content: message }],
+      messages: conversationHistory,
       system: systemPrompt,
     });
 
