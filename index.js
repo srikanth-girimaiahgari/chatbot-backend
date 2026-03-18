@@ -62,11 +62,15 @@ app.post("/chat", async (req, res) => {
   try {
     await supabase.from("chat_messages").insert({ session_id, role: "user", content: message });
 
-    const handoffTriggers = ["talk to a human", "speak to a human", "human agent", "real person", "talk to someone", "contact support"];
-    const purchaseTriggers = ["i want to buy", "i would like to buy", "purchase", "how do i buy", "how to buy", "i want to order", "ready to buy", "want to purchase", "can i buy", "id like to buy", "i will buy", "i want to purchase", "buy it", "buy this", "get it", "i want it", "how do i get"];
-
-    const wantsHuman = handoffTriggers.some(function(t) { return message.toLowerCase().includes(t); });
-    const wantsToBuy = purchaseTriggers.some(function(t) { return message.toLowerCase().includes(t); });
+    const intentDetection = await anthropic.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 20,
+  system: "You are an intent detector. Analyze the message and reply with exactly one word: 'buy' if the customer wants to purchase something, 'human' if they want to talk to a human agent, or 'none' if neither.",
+  messages: [{ role: "user", content: message }]
+});
+const detectedIntent = intentDetection.content[0].text.trim().toLowerCase();
+const wantsToBuy = detectedIntent === "buy";
+const wantsHuman = detectedIntent === "human";
 
     const { data: existingHandoff } = await supabase
       .from("handoff_requests")
