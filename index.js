@@ -38,21 +38,100 @@ app.post("/chat", async (req, res) => {
   try {
     await supabase.from("chat_messages").insert({ session_id, role: "user", content: message });
 
-    const handoffTriggers = ["talk to a human", "speak to a human", "human agent", "real person", "talk to someone", "contact support"];
-    const wantsHuman = handoffTriggers.some((trigger) => message.toLowerCase().includes(trigger));
+ const handoffTriggers = ["talk to a human", "speak to a human",
+  "human agent", "real person", "talk to someone", "contact support"];
+const purchaseTriggers = ["i want to buy", "i would like to buy",
+  "purchase", "how do i buy", "how to buy", "i want to order",
+  "ready to buy", "want to purchase", "id like to purchase"];
 
-    if (wantsHuman) {
-      await supabase.from("handoff_requests").insert({ session_id, reason: "customer_request", status: "pending" });
-      await resend.emails.send({
-        from: "onboarding@resend.dev",
-        to: process.env.ALERT_EMAIL,
-        subject: "New Human Handoff Request",
-        text: "A customer is requesting a human agent. Session ID: " + session_id + " Message: " + message,
-      });
-      const reply = "I am connecting you to our team right now. Someone will be with you shortly!";
-      await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
-      return res.json({ reply });
-    }
+const wantsHuman = handoffTriggers.some((trigger) =>
+  message.toLowerCase().includes(trigger)
+);
+const wantsToBuy = purchaseTriggers.some((trigger) =>
+  message.toLowerCase().includes(trigger)
+);
+
+const phoneRegex = /(\+?\d[\d\s\-]{7,}\d)/;
+const phoneMatch = message.match(phoneRegex);
+
+if (phoneMatch) {
+  const whatsappNumber = phoneMatch[0].trim();
+
+  await supabase
+    .from("handoff_requests")
+    .update({ whatsapp: whatsappNumber })
+    .eq("session_id", session_id)
+    .eq("reason", "purchase_intent");
+
+  await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: process.env.ALERT_EMAIL,
+    subject: "Customer WhatsApp Number Received!",
+    text: "Customer WhatsApp number: " + whatsappNumber + "\n\nSession ID: " + session_id + "\n\nContact them now to close the sale!",
+  });
+
+  const reply = "Thank you! Our team will contact you on " + whatsappNumber + " within minutes. Get ready to grow your business!";
+
+  await supabase.from("chat_messages").insert({
+    session_id,
+    role: "assistant",
+    content: reply,
+  });
+
+  return res.json({ reply });
+}
+
+
+if (wantsToBuy) {
+  await supabase.from("handoff_requests").insert({
+    session_id,
+    reason: "purchase_intent",
+    status: "pending",
+    product_interest: message,
+  });
+
+  await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: process.env.ALERT_EMAIL,
+    subject: "New Purchase Intent!",
+    text: "A customer wants to buy!\n\nSession ID: " + session_id + "\nMessage: " + message + "\n\nFollow up with them immediately!",
+  });
+
+  const reply = "That's great! To complete your purchase, please share your WhatsApp number and our team will reach out to you within minutes to finalize everything.";
+
+  await supabase.from("chat_messages").insert({
+    session_id,
+    role: "assistant",
+    content: reply,
+  });
+
+  return res.json({ reply });
+}
+
+if (wantsHuman) {
+  await supabase.from("handoff_requests").insert({
+    session_id,
+    reason: "customer_request",
+    status: "pending",
+  });
+
+  await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: process.env.ALERT_EMAIL,
+    subject: "New Human Handoff Request",
+    text: "A customer is requesting a human agent. Session ID: " + session_id + " Message: " + message,
+  });
+
+  const reply = "I am connecting you to our team right now. Someone will be with you shortly!";
+
+  await supabase.from("chat_messages").insert({
+    session_id,
+    role: "assistant",
+    content: reply,
+  });
+
+  return res.json({ reply });
+}
 
     const { data: products } = await supabase.from("products").select("*").eq("in_stock", true);
     const { data: faqs } = await supabase.from("faqs").select("*");
