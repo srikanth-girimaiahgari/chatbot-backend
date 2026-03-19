@@ -154,7 +154,6 @@ app.post("/chat", async (req, res) => {
       }
 
       if (existingHandoff.contact_method === "phone") {
-        console.log("Phone validation check:", rawMessage, isValidPhone(rawMessage));
         if (isValidPhone(rawMessage)) {
           await supabase.from("handoff_requests").update({ contact_detail: rawMessage, contact_method: "phone" }).eq("session_id", session_id).eq("reason", "purchase_intent");
           await connectCall(rawMessage, existingHandoff.product_interest || "your products");

@@ -4,8 +4,6 @@ const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_A
 
 async function connectCall(customerNumber, customerMessage) {
   try {
-    console.log("Initiating call to owner:", process.env.OWNER_PHONE_NUMBER);
-console.log("Customer number:", customerNumber);
     await twilioClient.calls.create({
       to: process.env.OWNER_PHONE_NUMBER,
       from: process.env.TWILIO_PHONE_NUMBER,

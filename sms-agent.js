@@ -14,17 +14,9 @@ function init(supabaseClient, anthropicClient, twilioClientInstance) {
 
 // ─── INCOMING SMS WEBHOOK ─────────────────────────────────────
 router.post("/sms", async (req, res) => {
-  console.log("SMS webhook received!");
-  console.log("Body:", req.body);
   const incomingMsg = req.body.Body;
   const fromNumber = req.body.From;
   const session_id = "sms_" + fromNumber.replace(/\D/g, "");
-  console.log("Processing SMS from:", fromNumber);
-console.log("Message:", incomingMsg);
-console.log("Session:", session_id);
-console.log("Supabase connected:", !!supabase);
-console.log("Anthropic connected:", !!anthropic);
-console.log("Twilio connected:", !!twilioClient);
   try {
     await supabase.from("chat_messages").insert({
       session_id,
