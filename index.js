@@ -9,6 +9,7 @@ const { isValidPhoneNumber } = require("libphonenumber-js");
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -29,13 +30,14 @@ function isValidEmail(email) {
 }
 
 function detectContactChoice(msg) {
-  if (msg.includes("1") || msg.includes("whatsapp")) return "whatsapp";
-  if (msg.includes("2") || msg.includes("text")) return "text";
-  if (msg.includes("3") || msg.includes("phone")) return "phone";
+  if (msg.includes("1") || msg.includes("phone call") || msg.includes("call me")) return "phone";
+  if (msg.includes("2") || msg.includes("whatsapp")) return "whatsapp";
+  if (msg.includes("3") || msg.includes("text")) return "text";
   if (msg.includes("4") || msg.includes("email")) return "email";
   return null;
 }
-
+const smsAgent = require("./sms-agent");
+app.use("/", smsAgent);
 app.get("/", (req, res) => {
   res.json({ status: "Chatbot backend is running!" });
 });
@@ -133,8 +135,9 @@ app.post("/chat", async (req, res) => {
 
       if (existingHandoff.contact_method === "phone") {
         if (isValidPhone(rawMessage)) {
-          await supabase.from("handoff_requests").update({ contact_detail: rawMessage }).eq("session_id", session_id).eq("reason", "purchase_intent");
-          const reply = "Got it! What is the best time to call you at " + rawMessage + "?";
+          await supabase.from("handoff_requests").update({ contact_detail: rawMessage, contact_method: "phone" }).eq("session_id", session_id).eq("reason", "purchase_intent");
+          await connectCall(rawMessage, existingHandoff.product_interest || "your products");
+          const reply = "Thank you! Our team will call you at " + rawMessage + " within minutes!";
           await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
           return res.json({ reply });
         } else {
@@ -186,19 +189,18 @@ app.post("/chat", async (req, res) => {
       await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
       return res.json({ reply });
     }
+if (wantsToBuy) {
+  await supabase.from("handoff_requests").insert({
+    session_id,
+    reason: "purchase_intent",
+    status: "pending",
+    product_interest: message,
+  });
 
-    if (wantsToBuy) {
-      await supabase.from("handoff_requests").insert({ session_id, reason: "purchase_intent", status: "pending", product_interest: message });
-      await resend.emails.send({
-        from: "onboarding@resend.dev",
-        to: process.env.ALERT_EMAIL,
-        subject: "New Purchase Intent!",
-        text: "A customer wants to buy!\nSession: " + session_id + "\nMessage: " + message,
-      });
-      const reply = "That is great! How would you prefer our team to contact you to complete your purchase?\n\n1. WhatsApp\n2. Text message\n3. Phone call\n4. Email\n\nJust reply with your preferred option!";
-      await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
-      return res.json({ reply });
-    }
+  const reply = "That is great! How would you like our team to reach you to complete your purchase?\n\n1. Phone call (we call you within minutes)\n2. WhatsApp\n3. Text message\n4. Email";
+  await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
+  return res.json({ reply });
+}
 
     if (wantsHuman) {
       await supabase.from("handoff_requests").insert({ session_id, reason: "customer_request", status: "pending" });
@@ -243,6 +245,9 @@ app.post("/chat", async (req, res) => {
   }
 });
 
+const { connectCall } = require("./call-agent");
+const { handleConnect } = require("./call-agent");
+app.post("/call/connect", express.urlencoded({ extended: false }), handleConnect);
 app.get("/handoff", async (req, res) => {
   try {
     const { data, error } = await supabase.from("handoff_requests").select("*").eq("status", "pending").order("created_at", { ascending: true });
