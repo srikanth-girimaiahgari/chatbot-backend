@@ -30,10 +30,10 @@ function isValidEmail(email) {
 }
 
 function detectContactChoice(msg) {
-  if (msg.includes("1") || msg.includes("whatsapp")) return "whatsapp";
-  if (msg.includes("2") || msg.includes("text")) return "text";
-  if (msg.includes("3") || msg.includes("phone")) return "phone";
-  if (msg.includes("4") || msg.includes("email")) return "email";
+  if (msg.includes("a") || msg.includes("whatsapp")) return "whatsapp";
+  if (msg.includes("b") || msg.includes("text")) return "text";
+  if (msg.includes("c") || msg.includes("phone")) return "phone";
+  if (msg.includes("d") || msg.includes("email")) return "email";
   return null;
 }
 
@@ -187,7 +187,7 @@ const wantsHuman = detectedIntent === "human";
         await supabase.from("handoff_requests").update({ contact_method: "email" }).eq("session_id", session_id).eq("reason", "purchase_intent");
         reply = "Please share your email address, for example: name@example.com";
       } else {
-        reply = "Please choose one of these options:\n\n1. WhatsApp\n2. Text message\n3. Phone call\n4. Email";
+        reply = "Please choose one of these options:\n\nA. WhatsApp\nB. Text message\nC. Phone call\nD. Email";
       }
       await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
       return res.json({ reply });
@@ -201,7 +201,7 @@ const wantsHuman = detectedIntent === "human";
         subject: "New Purchase Intent!",
         text: "A customer wants to buy!\nSession: " + session_id + "\nMessage: " + message,
       });
-      const reply = "That is great! How would you prefer our team to contact you to complete your purchase?\n\n1. WhatsApp\n2. Text message\n3. Phone call\n4. Email\n\nJust reply with your preferred option!";
+      const reply = "That is great! How would you prefer our team to contact you to complete your purchase?\n\nA. WhatsApp\nB. Text message\nC. Phone call\nD. Email\n\nJust reply with your preferred option!";
       await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
       return res.json({ reply });
     }
