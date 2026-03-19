@@ -1,10 +1,15 @@
-require("dotenv").config();
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config();
+}
 const express = require("express");
 const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
 const Anthropic = require("@anthropic-ai/sdk");
 const { Resend } = require("resend");
 const { isValidPhoneNumber } = require("libphonenumber-js");
+const { connectCall } = require("./call-agent");
+const { handleConnect } = require("./call-agent");
+const smsAgent = require("./sms-agent");
 
 const app = express();
 app.use(cors());
@@ -30,14 +35,23 @@ function isValidEmail(email) {
 }
 
 function detectContactChoice(msg) {
-  if (msg.includes("1") || msg.includes("phone call") || msg.includes("call me")) return "phone";
-  if (msg.includes("2") || msg.includes("whatsapp")) return "whatsapp";
-  if (msg.includes("3") || msg.includes("text")) return "text";
-  if (msg.includes("4") || msg.includes("email")) return "email";
+  if (msg.includes("a") || msg.includes("phone call") || msg.includes("call me")) return "phone";
+  if (msg.includes("b") || msg.includes("whatsapp")) return "whatsapp";
+  if (msg.includes("c") || msg.includes("text")) return "text";
+  if (msg.includes("d") || msg.includes("email")) return "email";
   return null;
 }
-const smsAgent = require("./sms-agent");
-app.use("/", smsAgent);
+
+async function detectIntent(message) {
+  const result = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 20,
+    system: "You are an intent detector. Reply with exactly one word only: 'buy' ONLY if the customer explicitly says they want to purchase or buy a specific product, 'human' if they want to talk to a human agent or get direct support, or 'none' for everything else including questions about products, prices, availability or general inquiries.",
+    messages: [{ role: "user", content: message }]
+  });
+  return result.content[0].text.trim().toLowerCase();
+}
+
 app.get("/", (req, res) => {
   res.json({ status: "Chatbot backend is running!" });
 });
@@ -55,6 +69,10 @@ app.get("/products", async (req, res) => {
   }
 });
 
+app.post("/call/connect", handleConnect);
+
+app.use("/", smsAgent);
+
 app.post("/chat", async (req, res) => {
   const { message, session_id } = req.body;
   if (!message || !session_id) {
@@ -62,11 +80,6 @@ app.post("/chat", async (req, res) => {
   }
   try {
     await supabase.from("chat_messages").insert({ session_id, role: "user", content: message });
-
-    const handoffTriggers = ["talk to a human", "speak to a human", "human agent", "real person", "talk to someone", "contact support"];
-   const purchaseTriggers = ["i want to buy", "i would like to buy", "purchase", "how do i buy", "how to buy", "i want to order", "ready to buy", "want to purchase", "can i buy", "id like to buy", "i will buy", "i want to purchase", "buy it", "buy this", "get it", "i want it", "how do i get"];
-    const wantsHuman = handoffTriggers.some(function(t) { return message.toLowerCase().includes(t); });
-    const wantsToBuy = purchaseTriggers.some(function(t) { return message.toLowerCase().includes(t); });
 
     const { data: existingHandoff } = await supabase
       .from("handoff_requests")
@@ -76,7 +89,7 @@ app.post("/chat", async (req, res) => {
       .maybeSingle();
 
     if (existingHandoff && existingHandoff.contact_method === "phone" && existingHandoff.contact_detail && !existingHandoff.preferred_time) {
-      const newChoice = detectContactChoice(message.toLowerCase());
+      const newChoice = isValidPhone(message.trim()) ? null : detectContactChoice(message.toLowerCase());
       if (newChoice) {
         await supabase.from("handoff_requests").update({ contact_method: newChoice, contact_detail: null, preferred_time: null }).eq("session_id", session_id).eq("reason", "purchase_intent");
         let reply = "";
@@ -101,7 +114,7 @@ app.post("/chat", async (req, res) => {
 
     if (existingHandoff && existingHandoff.contact_method && !existingHandoff.contact_detail) {
       const rawMessage = message.trim();
-      const newChoice = detectContactChoice(message.toLowerCase());
+      const newChoice = isValidPhone(rawMessage) ? null : detectContactChoice(message.toLowerCase());
 
       if (newChoice && newChoice !== existingHandoff.contact_method) {
         await supabase.from("handoff_requests").update({ contact_method: newChoice, contact_detail: null }).eq("session_id", session_id).eq("reason", "purchase_intent");
@@ -127,7 +140,7 @@ app.post("/chat", async (req, res) => {
           await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
           return res.json({ reply });
         } else {
-          const reply = "That does not look like a valid phone number. Please include your country code and full number, for example: +91 9876543210\n\nOr type 1, 2, 3 or 4 to choose a different contact method.";
+          const reply = "That does not look like a valid phone number. Please include your country code and full number, for example: +91 9876543210\n\nOr type A, B, C or D to choose a different contact method.";
           await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
           return res.json({ reply });
         }
@@ -141,7 +154,7 @@ app.post("/chat", async (req, res) => {
           await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
           return res.json({ reply });
         } else {
-          const reply = "That does not look like a valid phone number. Please include your country code and full number, for example: +91 9876543210\n\nOr type 1, 2, 3 or 4 to choose a different contact method.";
+          const reply = "That does not look like a valid phone number. Please include your country code and full number, for example: +91 9876543210\n\nOr type A, B, C or D to choose a different contact method.";
           await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
           return res.json({ reply });
         }
@@ -160,7 +173,7 @@ app.post("/chat", async (req, res) => {
           await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
           return res.json({ reply });
         } else {
-          const reply = "That does not look like a valid email address. Please try again like this: name@example.com\n\nOr type 1, 2, 3 or 4 to choose a different contact method.";
+          const reply = "That does not look like a valid email address. Please try again like this: name@example.com\n\nOr type A, B, C or D to choose a different contact method.";
           await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
           return res.json({ reply });
         }
@@ -168,39 +181,42 @@ app.post("/chat", async (req, res) => {
     }
 
     if (existingHandoff && !existingHandoff.contact_method) {
-      const msg = message.toLowerCase();
-      const choice = detectContactChoice(msg);
+      const choice = detectContactChoice(message.toLowerCase());
       let reply = "";
-      if (choice === "whatsapp") {
+      if (choice === "phone") {
+        await supabase.from("handoff_requests").update({ contact_method: "phone" }).eq("session_id", session_id).eq("reason", "purchase_intent");
+        reply = "Please share your phone number with country code, for example: +91 9876543210";
+      } else if (choice === "whatsapp") {
         await supabase.from("handoff_requests").update({ contact_method: "whatsapp" }).eq("session_id", session_id).eq("reason", "purchase_intent");
         reply = "Please share your WhatsApp number with country code, for example: +91 9876543210";
       } else if (choice === "text") {
         await supabase.from("handoff_requests").update({ contact_method: "text" }).eq("session_id", session_id).eq("reason", "purchase_intent");
         reply = "Please share your mobile number with country code, for example: +91 9876543210";
-      } else if (choice === "phone") {
-        await supabase.from("handoff_requests").update({ contact_method: "phone" }).eq("session_id", session_id).eq("reason", "purchase_intent");
-        reply = "Please share your phone number with country code, for example: +91 9876543210";
       } else if (choice === "email") {
         await supabase.from("handoff_requests").update({ contact_method: "email" }).eq("session_id", session_id).eq("reason", "purchase_intent");
         reply = "Please share your email address, for example: name@example.com";
       } else {
-        reply = "Please choose one of these options:\n\n1. WhatsApp\n2. Text message\n3. Phone call\n4. Email";
+        reply = "Please choose one of these options:\n\nA. Phone call\nB. WhatsApp\nC. Text message\nD. Email";
       }
       await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
       return res.json({ reply });
     }
-if (wantsToBuy) {
-  await supabase.from("handoff_requests").insert({
-    session_id,
-    reason: "purchase_intent",
-    status: "pending",
-    product_interest: message,
-  });
 
-  const reply = "That is great! How would you like our team to reach you to complete your purchase?\n\n1. Phone call (we call you within minutes)\n2. WhatsApp\n3. Text message\n4. Email";
-  await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
-  return res.json({ reply });
-}
+    const intent = await detectIntent(message);
+    const wantsToBuy = intent === "buy";
+    const wantsHuman = intent === "human";
+
+    if (wantsToBuy) {
+      await supabase.from("handoff_requests").insert({
+        session_id,
+        reason: "purchase_intent",
+        status: "pending",
+        product_interest: message,
+      });
+      const reply = "That is great! How would you like our team to reach you to complete your purchase?\n\nA. Phone call (we call you within minutes)\nB. WhatsApp\nC. Text message\nD. Email";
+      await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: reply });
+      return res.json({ reply });
+    }
 
     if (wantsHuman) {
       await supabase.from("handoff_requests").insert({ session_id, reason: "customer_request", status: "pending" });
@@ -226,13 +242,23 @@ if (wantsToBuy) {
       ? "FAQS:\n" + faqs.map(function(f) { return "Q: " + f.question + "\nA: " + f.answer; }).join("\n\n")
       : "";
 
-    const systemPrompt = "You are a friendly customer support assistant for a digital products business that sells tools to physical product sellers.\n\nUse this information to answer questions:\n\n" + productList + "\n\n" + faqList + "\n\nGuidelines:\n- Keep all responses under 3 sentences\n- Be direct and concise\n- When listing products show name and price only\n- Never make up information not provided above";
+    const { data: recentChats } = await supabase
+      .from("chat_messages")
+      .select("*")
+      .eq("session_id", session_id)
+      .order("created_at", { ascending: false })
+      .limit(6);
 
-    
-     const response = await anthropic.messages.create({
+    const conversationHistory = recentChats
+      ? recentChats.reverse().map(function(m) { return { role: m.role, content: m.content }; })
+      : [{ role: "user", content: message }];
+
+    const systemPrompt = "You are a friendly customer support assistant for a digital products business that sells tools to physical product sellers.\n\nUse this information to answer questions:\n\n" + productList + "\n\n" + faqList + "\n\nGuidelines:\n- Keep all responses under 3 sentences\n- Be direct and concise\n- When listing products always format them like this example:\nProduct Name — $XX.XX\nUse one product per line with a dash between name and price. Never list as a paragraph.\n- Never make up information not provided above";
+
+    const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 200,
-      messages: [{ role: "user", content: message }],
+      messages: conversationHistory,
       system: systemPrompt,
     });
 
@@ -245,9 +271,6 @@ if (wantsToBuy) {
   }
 });
 
-const { connectCall } = require("./call-agent");
-const { handleConnect } = require("./call-agent");
-app.post("/call/connect", express.urlencoded({ extended: false }), handleConnect);
 app.get("/handoff", async (req, res) => {
   try {
     const { data, error } = await supabase.from("handoff_requests").select("*").eq("status", "pending").order("created_at", { ascending: true });
