@@ -8,7 +8,7 @@ async function connectCall(customerNumber, customerMessage) {
 console.log("FROM:", process.env.TWILIO_PHONE_NUMBER);
 console.log("TO:", customerNumber);
     await twilioClient.calls.create({
-      to: process.env.OWNER_PHONE_NUMBER,
+      to: process.env.OWNER_PHONE_NUMBER || "+12244160090",
       from: process.env.TWILIO_PHONE_NUMBER,
       twiml: `<Response>
         <Say voice="alice">New customer alert. A customer is interested in your business. They said: ${customerMessage}. Press 1 to connect to them now.</Say>
