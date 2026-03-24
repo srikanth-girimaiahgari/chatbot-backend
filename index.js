@@ -92,7 +92,12 @@ async function getMayaReplyForInstagram(senderId, messageText) {
     conversationHistory.push({ role: "user", content: messageText });
 
     const productList = products && products.length > 0
-      ? products.map((p) => `${p.name} — ₹${p.price}: ${p.description}`).join("\n")
+      ? products.map((p) => {
+          const sizes = p.sizes_in_stock && p.sizes_in_stock.length > 0
+            ? `Sizes available: ${p.sizes_in_stock.join(", ")}`
+            : "Currently out of stock in all sizes";
+          return `${p.name} — ₹${p.price}\n  ${p.description}\n  ${sizes}`;
+        }).join("\n\n")
       : "";
 
     const faqList = faqs && faqs.length > 0
@@ -258,7 +263,12 @@ app.post("/chat", async (req, res) => {
       : [{ role: "user", content: message }];
 
     const productList = products && products.length > 0
-      ? products.map(function(p) { return p.name + " — ₹" + p.price + ": " + p.description; }).join("\n")
+      ? products.map(function(p) {
+          var sizes = p.sizes_in_stock && p.sizes_in_stock.length > 0
+            ? "Sizes available: " + p.sizes_in_stock.join(", ")
+            : "Currently out of stock in all sizes";
+          return p.name + " — ₹" + p.price + "\n  " + p.description + "\n  " + sizes;
+        }).join("\n\n")
       : "";
 
     const faqList = faqs && faqs.length > 0
