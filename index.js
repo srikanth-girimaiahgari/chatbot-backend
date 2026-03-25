@@ -27,6 +27,10 @@ const IG_ACCESS_TOKEN   = process.env.IG_ACCESS_TOKEN;
 const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID;
 const WA_ACCESS_TOKEN   = process.env.WA_ACCESS_TOKEN;
 
+// ADD THESE 2 LINES:
+console.log("WA_PHONE_NUMBER_ID at startup:", WA_PHONE_NUMBER_ID);
+console.log("WA_ACCESS_TOKEN at startup:", WA_ACCESS_TOKEN?.substring(0, 20));
+
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
