@@ -58,6 +58,55 @@ app.get("/", (req, res) => {
   res.json({ status: "Chatbot backend is running!" });
 });
 
+app.get("/debug/supabase", async (req, res) => {
+  try {
+    const igBusinessId = req.query.ig_business_id;
+
+    const [tenantsResult, productsResult, faqsResult] = await Promise.all([
+      supabase
+        .from("tenants")
+        .select("id,business_name,ig_business_id,wa_phone_number_id", { count: "exact" })
+        .limit(5),
+      supabase
+        .from("products")
+        .select("id,name,price,tenant_id", { count: "exact" })
+        .limit(5),
+      supabase
+        .from("faqs")
+        .select("id,question,tenant_id", { count: "exact" })
+        .limit(5),
+    ]);
+
+    let tenantLookup = null;
+    if (igBusinessId) {
+      tenantLookup = await supabase
+        .from("tenants")
+        .select("id,business_name,ig_business_id")
+        .eq("ig_business_id", igBusinessId)
+        .maybeSingle();
+    }
+
+    res.json({
+      supabase_url: process.env.SUPABASE_URL,
+      using_service_role_key: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      tenants_count: tenantsResult.count || 0,
+      products_count: productsResult.count || 0,
+      faqs_count: faqsResult.count || 0,
+      tenants_sample: tenantsResult.data || [],
+      products_sample: productsResult.data || [],
+      faqs_sample: faqsResult.data || [],
+      tenant_lookup: tenantLookup
+        ? {
+            data: tenantLookup.data || null,
+            error: tenantLookup.error ? tenantLookup.error.message : null,
+          }
+        : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const VERIFY_TOKEN      = process.env.VERIFY_TOKEN || "maya_verify_token";
 const IG_ACCESS_TOKEN   = process.env.IG_ACCESS_TOKEN;
 const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID;
