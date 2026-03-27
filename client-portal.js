@@ -211,6 +211,10 @@ async function getClientOverview(supabase, tenant) {
       plan: tenant.plan,
       timezone: tenant.timezone || null,
       business_category: tenant.business_category || null,
+      facebook_page_name: tenant.facebook_page_name || null,
+      instagram_connection_status: tenant.instagram_connection_status || "not_started",
+      connect_instagram_requested: Boolean(tenant.connect_instagram_requested),
+      connect_instagram_notes: tenant.connect_instagram_notes || null,
       onboarding_status: tenant.onboarding_status || "signup_pending",
       instagram_connected: Boolean(tenant.ig_business_id && tenant.ig_access_token),
       whatsapp_connected: Boolean(tenant.wa_phone_number_id && tenant.wa_access_token),
@@ -243,6 +247,8 @@ async function getClientSessionPayload(supabase, tenant) {
     onboarding: {
       status: overview.tenant.onboarding_status,
       profile_completed: Boolean(tenant.owner_name && tenant.owner_email && tenant.business_name),
+      instagram_setup_started: Boolean(tenant.instagram_username || tenant.facebook_page_name || tenant.connect_instagram_requested),
+      instagram_connected: Boolean(tenant.ig_business_id && tenant.ig_access_token),
       hours_completed: Boolean(tenant.response_window_start && tenant.response_window_end),
       catalog_ready: metrics.products_count > 0,
       faq_ready: metrics.faqs_count > 0,
@@ -905,12 +911,36 @@ function buildClientPortalHtml() {
               <input id="profile-instagram" name="instagram_username" placeholder="@yourbrand" />
             </div>
             <div class="field">
+              <label for="profile-facebook-page">Facebook Page Name</label>
+              <input id="profile-facebook-page" name="facebook_page_name" placeholder="Your Facebook Page" />
+            </div>
+            <div class="field">
+              <label for="profile-instagram-status">Instagram Connection Status</label>
+              <select id="profile-instagram-status" name="instagram_connection_status">
+                <option value="not_started">Not started</option>
+                <option value="details_added">Details added</option>
+                <option value="pending_support">Need DigiMaya help</option>
+                <option value="connected">Connected</option>
+              </select>
+            </div>
+            <div class="field">
               <label for="profile-lead-email">Lead Contact Email</label>
               <input id="profile-lead-email" type="email" name="lead_contact_email" placeholder="sales@brand.com" />
             </div>
             <div class="field">
               <label for="profile-lead-phone">Lead Contact Phone</label>
               <input id="profile-lead-phone" name="lead_contact_phone" placeholder="+91..." />
+            </div>
+            <div class="field full">
+              <label for="profile-connect-instagram">Do you want DigiMaya to help connect Instagram?</label>
+              <select id="profile-connect-instagram" name="connect_instagram_requested">
+                <option value="false">No, not yet</option>
+                <option value="true">Yes, please help me connect it</option>
+              </select>
+            </div>
+            <div class="field full">
+              <label for="profile-connect-notes">Instagram setup notes</label>
+              <textarea id="profile-connect-notes" name="connect_instagram_notes" placeholder="Share anything important here, like your Instagram handle, Facebook Page name, or whether you want a guided setup call."></textarea>
             </div>
             <div class="field full">
               <label for="profile-contact-method">Preferred Contact Method</label>
@@ -1233,8 +1263,12 @@ function buildClientPortalHtml() {
         document.getElementById("profile-timezone").value = tenant.timezone || "Asia/Kolkata";
         document.getElementById("profile-category").value = tenant.business_category || "";
         document.getElementById("profile-instagram").value = tenant.instagram_username || "";
+        document.getElementById("profile-facebook-page").value = tenant.facebook_page_name || "";
+        document.getElementById("profile-instagram-status").value = tenant.instagram_connection_status || "not_started";
         document.getElementById("profile-lead-email").value = tenant.lead_contact_email || "";
         document.getElementById("profile-lead-phone").value = tenant.lead_contact_phone || "";
+        document.getElementById("profile-connect-instagram").value = tenant.connect_instagram_requested ? "true" : "false";
+        document.getElementById("profile-connect-notes").value = tenant.connect_instagram_notes || "";
         document.getElementById("profile-contact-method").value = tenant.preferred_contact_method || "email";
         document.getElementById("hours-start").value = tenant.response_window_start || "";
         document.getElementById("hours-end").value = tenant.response_window_end || "";
@@ -1242,6 +1276,8 @@ function buildClientPortalHtml() {
 
         const checklist = [
           ["Business profile", onboarding.profile_completed],
+          ["Instagram setup started", onboarding.instagram_setup_started],
+          ["Instagram connected", onboarding.instagram_connected],
           ["Availability rules", onboarding.hours_completed],
           ["At least one product", onboarding.catalog_ready],
           ["At least one FAQ", onboarding.faq_ready],
@@ -1515,7 +1551,7 @@ function buildClientPortalHtml() {
 </html>`;
 }
 
-function createClientPortalRouter({ supabase }) {
+function createClientPortalRouter({ supabase, resend }) {
   const router = express.Router();
 
   router.get("/", (req, res) => {
@@ -1620,6 +1656,7 @@ function createClientPortalRouter({ supabase }) {
 
   router.post("/onboarding/profile", async (req, res) => {
     try {
+      const requestedInstagramHelp = String(req.body.connect_instagram_requested) === "true";
       const updatePayload = {
         business_name: safeText(req.body.business_name) || req.tenant.business_name,
         owner_name: safeText(req.body.owner_name) || req.tenant.owner_name,
@@ -1627,6 +1664,10 @@ function createClientPortalRouter({ supabase }) {
         timezone: safeText(req.body.timezone) || req.tenant.timezone || "Asia/Kolkata",
         business_category: safeText(req.body.business_category) || req.tenant.business_category,
         instagram_username: safeText(req.body.instagram_username) || req.tenant.instagram_username,
+        facebook_page_name: safeText(req.body.facebook_page_name) || req.tenant.facebook_page_name,
+        instagram_connection_status: safeText(req.body.instagram_connection_status) || req.tenant.instagram_connection_status || "details_added",
+        connect_instagram_requested: requestedInstagramHelp,
+        connect_instagram_notes: safeText(req.body.connect_instagram_notes) || req.tenant.connect_instagram_notes,
         lead_contact_email: normalizeEmail(req.body.lead_contact_email) || req.tenant.lead_contact_email || req.tenant.owner_email,
         lead_contact_phone: safeText(req.body.lead_contact_phone) || req.tenant.lead_contact_phone,
         preferred_contact_method: safeText(req.body.preferred_contact_method) || req.tenant.preferred_contact_method || "email",
@@ -1642,6 +1683,22 @@ function createClientPortalRouter({ supabase }) {
 
       if (error) {
         throw error;
+      }
+
+      if (requestedInstagramHelp && !req.tenant.connect_instagram_requested && process.env.ALERT_EMAIL) {
+        await resend.emails.send({
+          from: "onboarding@resend.dev",
+          to: process.env.ALERT_EMAIL,
+          subject: `Instagram setup help requested — ${data.business_name}`,
+          text: [
+            `Business: ${data.business_name}`,
+            `Owner: ${data.owner_name || "—"}`,
+            `Email: ${data.owner_email || "—"}`,
+            `Instagram: ${data.instagram_username || "—"}`,
+            `Facebook Page: ${data.facebook_page_name || "—"}`,
+            `Notes: ${data.connect_instagram_notes || "—"}`
+          ].join("\n")
+        });
       }
 
       res.json({ tenant: data });

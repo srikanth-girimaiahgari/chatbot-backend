@@ -34,7 +34,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 initSmsAgent(supabase, anthropic, require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN));
 app.use("/admin", createProviderAdminRouter({ supabase }));
-app.use("/client", createClientPortalRouter({ supabase }));
+app.use("/client", createClientPortalRouter({ supabase, resend }));
 
 function buildConversationHistory(recentChats, latestMessage) {
   const history = recentChats
