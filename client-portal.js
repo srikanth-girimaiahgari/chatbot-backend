@@ -407,8 +407,8 @@ function buildClientPortalHtml() {
     }
     .auth-intro h1 {
       margin: 0;
-      font-size: 34px;
-      line-height: 1.06;
+      font-size: 38px;
+      line-height: 1.02;
       letter-spacing: -0.04em;
     }
     .auth-intro p {
@@ -432,6 +432,12 @@ function buildClientPortalHtml() {
       display: grid;
       gap: 16px;
       align-content: start;
+    }
+    .mini-caption {
+      margin-top: -6px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
     }
     .auth-tabs {
       display: inline-flex;
@@ -511,6 +517,18 @@ function buildClientPortalHtml() {
       font-size: 13px;
       color: var(--muted);
       line-height: 1.5;
+    }
+    .helper-card {
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: linear-gradient(180deg, #fbf9ff 0%, #f4efff 100%);
+      border: 1px solid #e4dbfb;
+      color: #544d69;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .helper-card strong {
+      color: #3d345d;
     }
     .auth-message {
       display: none;
@@ -723,6 +741,40 @@ function buildClientPortalHtml() {
       color: var(--muted);
       line-height: 1.6;
     }
+    .setup-path {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .setup-step {
+      border-radius: 16px;
+      padding: 14px;
+      background: linear-gradient(180deg, #fcfbff 0%, #f3effe 100%);
+      border: 1px solid #e8e0fb;
+    }
+    .setup-step .step-no {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: #7d69d5;
+      color: white;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+    .setup-step h4 {
+      margin: 0 0 6px;
+      font-size: 15px;
+    }
+    .setup-step p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
     .checklist {
       display: grid;
       gap: 10px;
@@ -777,6 +829,14 @@ function buildClientPortalHtml() {
       white-space: pre-wrap;
     }
     .error.visible { display: block; }
+    .form-head {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .form-head p {
+      margin: 0;
+    }
     @media (max-width: 980px) {
       .auth-card, .onboarding-hero, .onboarding-grid {
         grid-template-columns: 1fr;
@@ -793,12 +853,12 @@ function buildClientPortalHtml() {
       <div class="auth-intro">
         <div class="brand">DM</div>
         <div class="eyebrow">DigiMaya Client Setup</div>
-        <h1>Turn your DMs into organised leads.</h1>
-        <p>Create your DigiMaya account, connect your business details, set your response hours, and start feeding MAYA your catalog and FAQs.</p>
+        <h1>Bring clarity to every business DM.</h1>
+        <p>Set up DigiMaya once, connect your business details, and give your customers a faster, more consistent buying experience.</p>
         <div class="auth-points">
-          <div>Clients sign up with their business email and password.</div>
-          <div>Onboarding collects brand details, response windows, products, and FAQs.</div>
-          <div>DigiMaya respects after-hours rules and promises follow-up instead of pretending your team is awake.</div>
+          <div>Create your secure business account in a few minutes.</div>
+          <div>Add your catalog, FAQs, and response preferences in one guided flow.</div>
+          <div>DigiMaya follows your business hours and sets clear follow-up expectations when your team is offline.</div>
         </div>
       </div>
 
@@ -807,6 +867,7 @@ function buildClientPortalHtml() {
           <button id="signup-tab" class="active" type="button">Sign Up</button>
           <button id="login-tab" type="button">Log In</button>
         </div>
+        <div class="mini-caption">Everything you need to launch DigiMaya for your business starts here.</div>
 
         <div id="auth-message" class="auth-message"></div>
 
@@ -837,8 +898,8 @@ function buildClientPortalHtml() {
               <input id="signup-timezone" name="timezone" placeholder="Asia/Kolkata" value="Asia/Kolkata" />
             </div>
           </div>
-          <button class="primary-btn" type="submit">Create DigiMaya Account</button>
-          <div class="muted-note">This creates the tenant account, your client login, and your private DigiMaya workspace.</div>
+          <button class="primary-btn" type="submit">Create Your DigiMaya Account</button>
+          <div class="muted-note">Create your secure account to manage your setup, catalog, conversations, and leads in one place.</div>
         </form>
 
         <form id="login-panel" class="auth-panel">
@@ -853,7 +914,7 @@ function buildClientPortalHtml() {
             </div>
           </div>
           <button class="primary-btn" type="submit">Log In to DigiMaya</button>
-          <div class="muted-note">After login, you’ll land in onboarding until your brand profile, hours, catalog, and FAQs are ready.</div>
+          <div class="muted-note">Pick up where you left off and continue your setup, customer conversations, and lead review.</div>
         </form>
       </div>
     </div>
@@ -865,15 +926,35 @@ function buildClientPortalHtml() {
         <div class="hero-card">
           <div class="eyebrow">DigiMaya Setup</div>
           <h2 id="onboarding-business-name">Finish your onboarding</h2>
-          <p>Before MAYA goes fully live, fill in your business profile, tell us when your team is available to respond to hot leads, and add your products and FAQs.</p>
+          <p>Follow this simple setup path to prepare DigiMaya for your business. Once these essentials are ready, your workspace is ready to launch.</p>
+          <div class="setup-path">
+            <div class="setup-step">
+              <div class="step-no">1</div>
+              <h4>Business Details</h4>
+              <p>Add your brand, contact, and Instagram setup details.</p>
+            </div>
+            <div class="setup-step">
+              <div class="step-no">2</div>
+              <h4>Availability</h4>
+              <p>Tell DigiMaya when your team usually responds to warm leads.</p>
+            </div>
+            <div class="setup-step">
+              <div class="step-no">3</div>
+              <h4>Catalog + FAQs</h4>
+              <p>Give DigiMaya the products and answers your customers ask for most.</p>
+            </div>
+          </div>
           <div id="onboarding-checklist" class="checklist"></div>
         </div>
         <div class="hero-card">
-          <div class="eyebrow">Current Rule</div>
-          <h3>After-hours behavior</h3>
-          <p id="current-off-hours-copy">DigiMaya will collect the lead and promise a follow-up when your team is available.</p>
+          <div class="eyebrow">Customer Experience Rule</div>
+          <h3>After-hours lead handling</h3>
+          <p id="current-off-hours-copy">DigiMaya will capture interest, keep the conversation warm, and let customers know your team will follow up as soon as you’re available.</p>
           <div class="inline-actions">
             <span id="current-onboarding-status" class="status-pill">Setup in progress</span>
+          </div>
+          <div class="helper-card">
+            <strong>Built for a hassle-free launch:</strong> start with the essentials first. You can always improve your catalog, FAQs, and channel connections after the first version is live.
           </div>
         </div>
       </div>
@@ -882,9 +963,11 @@ function buildClientPortalHtml() {
 
       <div class="onboarding-grid">
         <form id="business-profile-form" class="hero-card">
-          <div class="eyebrow">Step 1</div>
-          <h3>Business Profile</h3>
-          <p>Tell DigiMaya who should receive leads and what kind of business you run.</p>
+          <div class="form-head">
+            <div class="eyebrow">Step 1</div>
+            <h3>Business Profile</h3>
+            <p>Set the essentials DigiMaya needs to represent your business clearly and route leads to the right person.</p>
+          </div>
           <div class="field-grid">
             <div class="field">
               <label for="profile-business-name">Business Name</label>
@@ -955,9 +1038,11 @@ function buildClientPortalHtml() {
         </form>
 
         <form id="availability-form" class="hero-card">
-          <div class="eyebrow">Step 2</div>
-          <h3>Availability Rules</h3>
-          <p>Tell DigiMaya when your team normally responds so hot leads get the right promise instead of a fake “we’re online now” response.</p>
+          <div class="form-head">
+            <div class="eyebrow">Step 2</div>
+            <h3>Availability Rules</h3>
+            <p>Set your usual response window so DigiMaya can keep customer expectations clear when your team is offline.</p>
+          </div>
           <div class="field-grid">
             <div class="field">
               <label for="hours-start">Start Time</label>
@@ -976,9 +1061,11 @@ function buildClientPortalHtml() {
         </form>
 
         <form id="product-form" class="hero-card">
-          <div class="eyebrow">Step 3</div>
-          <h3>Add Product</h3>
-          <p>Add products one by one for now. We can add CSV import later.</p>
+          <div class="form-head">
+            <div class="eyebrow">Step 3</div>
+            <h3>Add Product</h3>
+            <p>Start with your most important products first. A small high-quality catalog is better than a rushed large one.</p>
+          </div>
           <div class="field-grid">
             <div class="field">
               <label for="product-name">Product Name</label>
@@ -1013,9 +1100,11 @@ function buildClientPortalHtml() {
         </form>
 
         <form id="faq-form" class="hero-card">
-          <div class="eyebrow">Step 4</div>
-          <h3>Add FAQ</h3>
-          <p>Feed DigiMaya the questions you answer repeatedly so the assistant can reply like your team would.</p>
+          <div class="form-head">
+            <div class="eyebrow">Step 4</div>
+            <h3>Add FAQ</h3>
+            <p>Add the questions customers ask again and again so DigiMaya can answer with more confidence from day one.</p>
+          </div>
           <div class="field-grid">
             <div class="field full">
               <label for="faq-question">Question</label>
@@ -1033,7 +1122,7 @@ function buildClientPortalHtml() {
       <div class="hero-card">
         <div class="eyebrow">Final Step</div>
         <h3>When you’re ready</h3>
-        <p>Once your business profile, hours, products, and FAQs are in place, DigiMaya can treat your workspace as launch-ready.</p>
+        <p>Once your business profile, hours, products, and FAQs are in place, DigiMaya can treat your workspace as launch-ready and move you into your dashboard.</p>
         <div class="inline-actions">
           <button id="mark-launch-ready" class="primary-btn" type="button">Mark Launch Ready</button>
           <button id="go-to-dashboard" class="secondary-btn" type="button">Open Client Dashboard</button>
