@@ -58,6 +58,55 @@ function getDirectBudgetReply(products, latestMessage) {
   return buildBudgetRecommendationResponse(products, latestMessage);
 }
 
+function parseTimeParts(value) {
+  const match = String(value || "").match(/^(\d{2}):(\d{2})/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    hours: Number(match[1]),
+    minutes: Number(match[2])
+  };
+}
+
+function isWithinTenantResponseWindow(tenant) {
+  const start = parseTimeParts(tenant.response_window_start);
+  const end = parseTimeParts(tenant.response_window_end);
+  if (!start || !end) {
+    return true;
+  }
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: tenant.timezone || "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(new Date());
+  const currentHours = Number(parts.find((part) => part.type === "hour")?.value || "0");
+  const currentMinutes = Number(parts.find((part) => part.type === "minute")?.value || "0");
+  const currentTotal = currentHours * 60 + currentMinutes;
+  const startTotal = start.hours * 60 + start.minutes;
+  const endTotal = end.hours * 60 + end.minutes;
+
+  if (startTotal <= endTotal) {
+    return currentTotal >= startTotal && currentTotal <= endTotal;
+  }
+
+  return currentTotal >= startTotal || currentTotal <= endTotal;
+}
+
+function applyLeadAvailabilityReply(reply, tenant) {
+  if (isWithinTenantResponseWindow(tenant)) {
+    return reply;
+  }
+
+  const offHoursReply = tenant.off_hours_reply || "Our team is currently offline, but DigiMaya has noted your message and we’ll get back to you as soon as we’re available.";
+  return `${reply}\n\n${offHoursReply}`.trim();
+}
+
 app.get("/", (req, res) => {
   res.json({ status: "Chatbot backend is running!" });
 });
@@ -224,7 +273,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
         text: `Name: ${parts[0]}\nProduct: ${parts[4]}\nContact: ${parts[2]} — ${parts[3]}`,
       });
 
-      reply = reply.split("HANDOFF_READY|")[0].trim();
+      reply = applyLeadAvailabilityReply(reply.split("HANDOFF_READY|")[0].trim(), tenant);
     }
 
     // Save MAYA's reply to history
@@ -353,7 +402,7 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
         text: `Name: ${parts[0]}\nProduct: ${parts[4]}\nContact: ${parts[2]} — ${parts[3]}\nWhatsApp: ${senderPhone}`,
       });
 
-      reply = reply.split("HANDOFF_READY|")[0].trim();
+      reply = applyLeadAvailabilityReply(reply.split("HANDOFF_READY|")[0].trim(), tenant);
     }
 
     await supabase.from("chat_messages").insert({
