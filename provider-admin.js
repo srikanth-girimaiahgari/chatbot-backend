@@ -258,6 +258,78 @@ function buildDashboardHtml() {
 </html>`;
 }
 
+function buildSheetsExportPayload({ summary, tenants }) {
+  const exportedAt = new Date().toISOString();
+
+  return {
+    exported_at: exportedAt,
+    summary,
+    sheets: {
+      tenants: tenants.map((tenant) => ({
+        tenant_id: tenant.id,
+        business_name: tenant.business_name,
+        active: tenant.active,
+        plan: tenant.plan,
+        instagram_connected: tenant.instagram_connected,
+        whatsapp_connected: tenant.whatsapp_connected,
+        products_count: tenant.catalog.productsCount,
+        faqs_count: tenant.catalog.faqsCount,
+        health_status: tenant.health.status,
+        warnings: tenant.health.warnings.join(", "),
+        last_inbound_at: tenant.messages.lastInboundAt || "",
+        last_reply_at: tenant.messages.lastReplyAt || "",
+        total_messages: tenant.messages.totalMessages,
+        inbound_count: tenant.messages.inboundCount,
+        outbound_count: tenant.messages.outboundCount,
+        total_handoffs: tenant.handoffs.totalHandoffs,
+        pending_handoffs: tenant.handoffs.pendingHandoffs,
+        last_handoff_at: tenant.handoffs.lastHandoffAt || ""
+      })),
+      health: tenants.map((tenant) => ({
+        tenant_id: tenant.id,
+        business_name: tenant.business_name,
+        health_status: tenant.health.status,
+        warnings: tenant.health.warnings.join(", "),
+        setup_ready: tenant.catalog.productsCount > 0 && tenant.catalog.faqsCount > 0 && tenant.instagram_connected,
+        instagram_connected: tenant.instagram_connected,
+        whatsapp_connected: tenant.whatsapp_connected,
+        products_count: tenant.catalog.productsCount,
+        faqs_count: tenant.catalog.faqsCount,
+        total_messages: tenant.messages.totalMessages
+      })),
+      messages: tenants.map((tenant) => ({
+        tenant_id: tenant.id,
+        business_name: tenant.business_name,
+        total_messages: tenant.messages.totalMessages,
+        inbound_count: tenant.messages.inboundCount,
+        outbound_count: tenant.messages.outboundCount,
+        last_inbound_at: tenant.messages.lastInboundAt || "",
+        last_reply_at: tenant.messages.lastReplyAt || ""
+      })),
+      handoffs: tenants.map((tenant) => ({
+        tenant_id: tenant.id,
+        business_name: tenant.business_name,
+        pending_handoffs: tenant.handoffs.pendingHandoffs,
+        total_handoffs: tenant.handoffs.totalHandoffs,
+        last_handoff_at: tenant.handoffs.lastHandoffAt || ""
+      })),
+      daily_summary: [
+        {
+          exported_at: exportedAt,
+          tenants_count: summary.tenants_count,
+          active_tenants: summary.active_tenants,
+          products_count: summary.products_count,
+          faqs_count: summary.faqs_count,
+          messages_count: summary.messages_count,
+          handoffs_count: summary.handoffs_count,
+          pending_handoffs: summary.pending_handoffs,
+          tenants_needing_attention: tenants.filter((tenant) => tenant.health.status !== "healthy").length
+        }
+      ]
+    }
+  };
+}
+
 function createProviderAdminRouter({ supabase }) {
   const router = express.Router();
 
@@ -288,19 +360,60 @@ function createProviderAdminRouter({ supabase }) {
       }
 
       const snapshots = await Promise.all((tenants || []).map((tenant) => buildTenantSnapshot(supabase, tenant)));
+      const summary = {
+        tenants_count: tenantsResult.count || 0,
+        active_tenants: (tenants || []).filter((tenant) => tenant.active).length,
+        products_count: productsResult.count || 0,
+        faqs_count: faqsResult.count || 0,
+        messages_count: messagesResult.count || 0,
+        handoffs_count: handoffsResult.count || 0,
+        pending_handoffs: pendingHandoffsResult.count || 0
+      };
 
       res.json({
-        summary: {
-          tenants_count: tenantsResult.count || 0,
-          active_tenants: (tenants || []).filter((tenant) => tenant.active).length,
-          products_count: productsResult.count || 0,
-          faqs_count: faqsResult.count || 0,
-          messages_count: messagesResult.count || 0,
-          handoffs_count: handoffsResult.count || 0,
-          pending_handoffs: pendingHandoffsResult.count || 0
-        },
+        summary,
         tenants: snapshots
       });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get("/exports/google-sheets", async (req, res) => {
+    try {
+      const [tenantsResult, productsResult, faqsResult, messagesResult, handoffsResult, pendingHandoffsResult] = await Promise.all([
+        supabase.from("tenants").select("*", { count: "exact", head: true }),
+        supabase.from("products").select("*", { count: "exact", head: true }),
+        supabase.from("faqs").select("*", { count: "exact", head: true }),
+        supabase.from("chat_messages").select("*", { count: "exact", head: true }),
+        supabase.from("handoff_requests").select("*", { count: "exact", head: true }),
+        supabase.from("handoff_requests").select("*", { count: "exact", head: true }).eq("status", "pending")
+      ]);
+
+      const { data: tenants, error } = await supabase
+        .from("tenants")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      const snapshots = await Promise.all((tenants || []).map((tenant) => buildTenantSnapshot(supabase, tenant)));
+      const summary = {
+        tenants_count: tenantsResult.count || 0,
+        active_tenants: (tenants || []).filter((tenant) => tenant.active).length,
+        products_count: productsResult.count || 0,
+        faqs_count: faqsResult.count || 0,
+        messages_count: messagesResult.count || 0,
+        handoffs_count: handoffsResult.count || 0,
+        pending_handoffs: pendingHandoffsResult.count || 0
+      };
+
+      res.json(buildSheetsExportPayload({
+        summary,
+        tenants: snapshots
+      }));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
