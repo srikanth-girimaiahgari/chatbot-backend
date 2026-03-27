@@ -7,6 +7,7 @@ const { Resend } = require("resend");
 const { connectCall } = require("./call-agent");
 const { router: smsAgent, init: initSmsAgent } = require("./sms-agent");
 const { createProviderAdminRouter } = require("./provider-admin");
+const { createClientPortalRouter } = require("./client-portal");
 const {
   buildMayaSystemPrompt,
   findMatchingProducts,
@@ -33,6 +34,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 initSmsAgent(supabase, anthropic, require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN));
 app.use("/admin", createProviderAdminRouter({ supabase }));
+app.use("/client", createClientPortalRouter({ supabase }));
 
 function buildConversationHistory(recentChats, latestMessage) {
   const history = recentChats
