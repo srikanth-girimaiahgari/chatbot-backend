@@ -2,34 +2,123 @@ function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function detectBudget(text) {
+function getCatalogCurrency(products = []) {
+  const numericPrices = (products || [])
+    .map((product) => Number(product.price))
+    .filter((price) => Number.isFinite(price) && price > 0);
+
+  if (numericPrices.length === 0) {
+    return {
+      code: "INR",
+      symbol: "Rs.",
+      locale: "en-IN"
+    };
+  }
+
+  const maxPrice = Math.max(...numericPrices);
+  if (maxPrice <= 250) {
+    return {
+      code: "GBP",
+      symbol: "£",
+      locale: "en-GB"
+    };
+  }
+
+  return {
+    code: "INR",
+    symbol: "Rs.",
+    locale: "en-IN"
+  };
+}
+
+function formatMoney(amount, currency) {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) {
+    return `${currency.symbol} 0`;
+  }
+
+  if (currency.code === "GBP") {
+    return `${currency.symbol}${value.toLocaleString(currency.locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`;
+  }
+
+  return `${currency.symbol} ${value.toLocaleString(currency.locale, {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2
+  })}`;
+}
+
+function buildBudgetBands(products = []) {
+  const prices = (products || [])
+    .map((product) => Number(product.price))
+    .filter((price) => Number.isFinite(price) && price > 0)
+    .sort((a, b) => a - b);
+
+  if (prices.length < 3) {
+    return [];
+  }
+
+  const min = prices[0];
+  const max = prices[prices.length - 1];
+  if (min === max) {
+    return [];
+  }
+
+  const lowCutoff = prices[Math.floor((prices.length - 1) / 3)];
+  const highCutoff = prices[Math.floor(((prices.length - 1) * 2) / 3)];
+
+  if (!(min < lowCutoff && lowCutoff <= highCutoff && highCutoff < max)) {
+    return [];
+  }
+
+  return [
+    { type: "max", max: lowCutoff },
+    { type: "range", min: lowCutoff, max: highCutoff },
+    { type: "min", min: highCutoff }
+  ];
+}
+
+function formatBudgetBand(band, currency) {
+  if (band.type === "max") {
+    return `Under ${formatMoney(band.max, currency)}`;
+  }
+
+  if (band.type === "min") {
+    return `Above ${formatMoney(band.min, currency)}`;
+  }
+
+  return `${formatMoney(band.min, currency)} - ${formatMoney(band.max, currency)}`;
+}
+
+function detectBudget(text, products = []) {
   const value = normalizeText(text);
+  const currency = getCatalogCurrency(products);
+  const numberMatches = (value.match(/\d[\d,]*/g) || []).map((item) => Number(item.replace(/,/g, ""))).filter(Number.isFinite);
 
   if (!value) {
     return null;
   }
 
-  if (value.includes("under 1000") || value.includes("below 1000") || value.includes("less than 1000")) {
-    return "Under Rs. 1000";
+  if ((value.includes("under") || value.includes("below") || value.includes("less than")) && numberMatches[0] != null) {
+    return `Under ${formatMoney(numberMatches[0], currency)}`;
   }
 
-  if (
-    value.includes("1000 - 2000") ||
-    value.includes("1000 to 2000") ||
-    value.includes("between 1000 and 2000")
-  ) {
-    return "Rs. 1000 - Rs. 2000";
+  if ((value.includes("above") || value.includes("over") || value.includes("more than")) && numberMatches[0] != null) {
+    return `Above ${formatMoney(numberMatches[0], currency)}`;
   }
 
-  if (value.includes("above 2000") || value.includes("over 2000") || value.includes("more than 2000")) {
-    return "Above Rs. 2000";
+  if (numberMatches.length >= 2 && (value.includes("-") || value.includes(" to ") || value.includes("between"))) {
+    return `${formatMoney(numberMatches[0], currency)} - ${formatMoney(numberMatches[1], currency)}`;
   }
 
   return null;
 }
 
-function parseBudgetFromText(text) {
+function parseBudgetFromText(text, products = []) {
   const value = normalizeText(text);
+  const currency = getCatalogCurrency(products);
 
   if (!value) {
     return null;
@@ -38,14 +127,14 @@ function parseBudgetFromText(text) {
   if (value.includes("under") || value.includes("below") || value.includes("less than")) {
     const max = Number((value.match(/\d[\d,]*/g) || [])[0]?.replace(/,/g, ""));
     if (Number.isFinite(max)) {
-      return { label: `Under Rs. ${max.toLocaleString("en-IN")}`, max };
+      return { label: `Under ${formatMoney(max, currency)}`, max };
     }
   }
 
   if (value.includes("above") || value.includes("over") || value.includes("more than")) {
     const min = Number((value.match(/\d[\d,]*/g) || [])[0]?.replace(/,/g, ""));
     if (Number.isFinite(min)) {
-      return { label: `Above Rs. ${min.toLocaleString("en-IN")}`, min };
+      return { label: `Above ${formatMoney(min, currency)}`, min };
     }
   }
 
@@ -55,7 +144,7 @@ function parseBudgetFromText(text) {
     const max = Number(matches[1].replace(/,/g, ""));
     if (Number.isFinite(min) && Number.isFinite(max)) {
       return {
-        label: `Rs. ${min.toLocaleString("en-IN")} - Rs. ${max.toLocaleString("en-IN")}`,
+        label: `${formatMoney(min, currency)} - ${formatMoney(max, currency)}`,
         min,
         max
       };
@@ -91,20 +180,16 @@ function detectUseCase(text) {
   return null;
 }
 
-function detectStage(messages, latestMessage) {
+function detectStage(messages, latestMessage, products = []) {
   const transcript = messages.map((message) => normalizeText(message.content || message.text)).join(" \n ");
   const latest = normalizeText(latestMessage);
+  const knownBudget = detectBudget(transcript, products) || detectBudget(latest, products);
 
   if (latest.includes("pay") || latest.includes("payment") || latest.includes("buy this") || latest.includes("i want this")) {
     return "ready_to_buy";
   }
 
-  if (
-    transcript.includes("budget") ||
-    transcript.includes("under rs.") ||
-    transcript.includes("rs. 1000") ||
-    transcript.includes("above rs. 2000")
-  ) {
+  if (transcript.includes("budget") || knownBudget) {
     return "budget_captured";
   }
 
@@ -122,6 +207,7 @@ function detectStage(messages, latestMessage) {
 }
 
 function buildProductHighlights(products) {
+  const currency = getCatalogCurrency(products);
   return (products || []).slice(0, 25).map((product) => {
     const sizes = product.sizes_in_stock && product.sizes_in_stock.length > 0
       ? `Sizes: ${product.sizes_in_stock.join(", ")}`
@@ -134,7 +220,7 @@ function buildProductHighlights(products) {
       .filter(Boolean)
       .join(", ");
 
-    return `${product.name} — Rs. ${product.price}\n${product.description}\n${sizes}${tags ? `\nTags: ${tags}` : ""}`;
+    return `${product.name} — ${formatMoney(product.price, currency)}\n${product.description}\n${sizes}${tags ? `\nTags: ${tags}` : ""}`;
   }).join("\n\n");
 }
 
@@ -163,10 +249,11 @@ function findMatchingProducts(products, latestMessage) {
 
 function buildProductResponse(product, latestMessage) {
   const message = normalizeText(latestMessage);
+  const currency = getCatalogCurrency([product]);
   const sizes = product.sizes_in_stock && product.sizes_in_stock.length > 0
     ? product.sizes_in_stock.join(", ")
     : null;
-  const priceLine = `${product.name} is priced at Rs. ${product.price}.`;
+  const priceLine = `${product.name} is priced at ${formatMoney(product.price, currency)}.`;
 
   if (message.includes("available") || message.includes("availability") || message.includes("in stock")) {
     const stockLine = product.in_stock === false
@@ -203,7 +290,8 @@ function pickReason(product, latestMessage) {
 }
 
 function buildBudgetRecommendationResponse(products, latestMessage) {
-  const budget = parseBudgetFromText(latestMessage);
+  const currency = getCatalogCurrency(products);
+  const budget = parseBudgetFromText(latestMessage, products);
   if (!budget) {
     return null;
   }
@@ -232,34 +320,42 @@ function buildBudgetRecommendationResponse(products, latestMessage) {
     return `I’m not seeing an in-stock option in ${budget.label} right now. If you want, I can show the closest available styles just above that budget.`;
   }
 
-  const lines = matches.map((product) => `${product.name} - Rs. ${product.price}. ${pickReason(product, latestMessage)}`);
+  const lines = matches.map((product) => `${product.name} - ${formatMoney(product.price, currency)}. ${pickReason(product, latestMessage)}`);
   return `Here are ${matches.length} options in ${budget.label}:\n\n${lines.join("\n")}\n\nIf you want, I can narrow these by minimalist, trendy, or premium style too.`;
 }
 
 function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, latestMessage }) {
-  const inferredBudget = recentChats.map((chat) => detectBudget(chat.content)).find(Boolean) || detectBudget(latestMessage);
+  const currency = getCatalogCurrency(products);
+  const budgetBands = buildBudgetBands(products);
+  const budgetPrompt = budgetBands.length > 0
+    ? budgetBands.map((band) => formatBudgetBand(band, currency)).join(", ")
+    : null;
+  const inferredBudget = recentChats.map((chat) => detectBudget(chat.content, products)).find(Boolean) || detectBudget(latestMessage, products);
   const inferredStyle = recentChats.map((chat) => detectStyle(chat.content)).find(Boolean) || detectStyle(latestMessage);
   const inferredUseCase = recentChats.map((chat) => detectUseCase(chat.content)).find(Boolean) || detectUseCase(latestMessage);
-  const inferredStage = detectStage(recentChats, latestMessage);
+  const inferredStage = detectStage(recentChats, latestMessage, products);
   const matchedProducts = findMatchingProducts(products, latestMessage);
   const matchedProductText = matchedProducts.length > 0
-    ? matchedProducts.slice(0, 3).map((product) => `${product.name} = Rs. ${product.price}`).join(" | ")
+    ? matchedProducts.slice(0, 3).map((product) => `${product.name} = ${formatMoney(product.price, currency)}`).join(" | ")
     : "none";
 
   return [
-    "You are MAYA, a warm sales assistant for an Indian ethnic wear brand.",
+    "You are MAYA, a warm sales assistant for this business.",
     `Channel: ${contextLabel}.`,
     "Your job is to reply like a real digital employee: understand intent, guide the shopper, recommend the right products, and gently move toward purchase.",
     "Always sound human, warm, concise, and confident.",
     "Reply in 2-4 short sentences unless listing options.",
-    "Always use Indian Rupees written like Rs. 899 or Rs. 1,999.",
-    "Never use the $ symbol.",
+    `Use the tenant's catalog currency consistently: ${currency.code} (${currency.symbol}).`,
+    "Never switch to a different currency or invent currency symbols.",
     "Never invent price, stock, shipping time, size details, or discount approvals.",
     "If the customer asks price, details, or availability and the message matches a product in the catalog, you must answer using that exact matched product name and exact database price first.",
     "Do not answer price questions with a broad collection range when an exact matched product price is available.",
     "Only mention a general price range if the customer explicitly asks for options by budget and no single product is clearly identified.",
     "If the customer asks price/details/availability, answer first with facts from the catalog, then ask one useful selling question.",
-    "If budget is missing and recommendations would help, ask for budget using these choices: Under Rs. 1000, Rs. 1000 - Rs. 2000, Above Rs. 2000.",
+    budgetPrompt
+      ? `If budget is missing and recommendations would help, ask for budget using sensible catalog-based choices such as: ${budgetPrompt}.`
+      : "If budget is missing and recommendations would help, ask for the customer's preferred budget range in the catalog's currency.",
+    "Do not ask for budget as the first move unless the customer is explicitly asking for options by range or wants recommendations without naming a specific product.",
     "If style is missing and recommendations would help, ask whether they prefer minimalist, trendy, or premium.",
     "When recommending products, suggest only 2-3 options and briefly say why each matches.",
     "If the customer clearly wants to buy, confirm the product and say the team can send a payment link right away.",
@@ -272,10 +368,7 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
     `Known use-case: ${inferredUseCase || "unknown"}.`,
     `Matched products for latest message: ${matchedProductText}.`,
     "BUSINESS INFO:",
-    "We sell premium Indian ethnic wear for weddings, receptions, sangeets, festive occasions, and stylish daily dressing.",
-    "Sizes run S to XXL.",
-    "Free shipping across India including GST.",
-    "Wash care: Cindrella Gown is hand wash. All lehengas are dry clean only.",
+    "Answer from the tenant's actual catalog and FAQs rather than reusing assumptions from another brand.",
     "PRODUCTS:",
     buildProductHighlights(products),
     "FAQS:",

@@ -6,6 +6,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 const { Resend } = require("resend");
 const { connectCall } = require("./call-agent");
 const { router: smsAgent, init: initSmsAgent } = require("./sms-agent");
+const { createProviderAdminRouter } = require("./provider-admin");
 const {
   buildMayaSystemPrompt,
   findMatchingProducts,
@@ -31,6 +32,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 initSmsAgent(supabase, anthropic, require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN));
+app.use("/admin", createProviderAdminRouter({ supabase }));
 
 function buildConversationHistory(recentChats, latestMessage) {
   const history = recentChats
@@ -56,55 +58,6 @@ function getDirectBudgetReply(products, latestMessage) {
 
 app.get("/", (req, res) => {
   res.json({ status: "Chatbot backend is running!" });
-});
-
-app.get("/debug/supabase", async (req, res) => {
-  try {
-    const igBusinessId = req.query.ig_business_id;
-
-    const [tenantsResult, productsResult, faqsResult] = await Promise.all([
-      supabase
-        .from("tenants")
-        .select("id,business_name,ig_business_id,wa_phone_number_id", { count: "exact" })
-        .limit(5),
-      supabase
-        .from("products")
-        .select("id,name,price,tenant_id", { count: "exact" })
-        .limit(5),
-      supabase
-        .from("faqs")
-        .select("id,question,tenant_id", { count: "exact" })
-        .limit(5),
-    ]);
-
-    let tenantLookup = null;
-    if (igBusinessId) {
-      tenantLookup = await supabase
-        .from("tenants")
-        .select("id,business_name,ig_business_id")
-        .eq("ig_business_id", igBusinessId)
-        .maybeSingle();
-    }
-
-    res.json({
-      supabase_url: process.env.SUPABASE_URL,
-      using_service_role_key: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-      tenants_count: tenantsResult.count || 0,
-      products_count: productsResult.count || 0,
-      faqs_count: faqsResult.count || 0,
-      tenants_sample: tenantsResult.data || [],
-      products_sample: productsResult.data || [],
-      faqs_sample: faqsResult.data || [],
-      tenant_lookup: tenantLookup
-        ? {
-            data: tenantLookup.data || null,
-            error: tenantLookup.error ? tenantLookup.error.message : null,
-          }
-        : null,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 const VERIFY_TOKEN      = process.env.VERIFY_TOKEN || "maya_verify_token";
@@ -213,6 +166,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
       session_id: senderId,
       role: "user",
       content: messageText,
+      tenant_id: tenant.id,
     });
 
     const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
@@ -223,6 +177,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
         session_id: senderId,
         role: "assistant",
         content: directReply,
+        tenant_id: tenant.id,
       });
       return directReply;
     }
@@ -256,6 +211,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
         contact_method: parts[2] || "",
         contact_detail: parts[3] || "",
         product_interest: parts[4] || "",
+        tenant_id: tenant.id,
       });
 
       // Email alert to you
@@ -274,6 +230,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
       session_id: senderId,
       role: "assistant",
       content: reply,
+      tenant_id: tenant.id,
     });
 
     return reply;
@@ -338,10 +295,11 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
       session_id: sessionId,
       role: "user",
       content: messageText,
+      tenant_id: tenant.id,
     });
 
-    const { data: products } = await supabase.from("products").select("*").eq("in_stock", true);
-    const { data: faqs }     = await supabase.from("faqs").select("*");
+    const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
+    const { data: faqs }     = await supabase.from("faqs").select("*").eq("tenant_id", tenant.id);
 
     const directReply = getDirectProductReply(products, messageText) || getDirectBudgetReply(products, messageText);
     if (directReply) {
@@ -349,6 +307,7 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
         session_id: sessionId,
         role: "assistant",
         content: directReply,
+        tenant_id: tenant.id,
       });
       return directReply;
     }
@@ -382,6 +341,7 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
         contact_method: parts[2] || "",
         contact_detail: parts[3] || "",
         product_interest: parts[4] || "",
+        tenant_id: tenant.id,
       });
 
       await resend.emails.send({
@@ -398,6 +358,7 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
       session_id: sessionId,
       role: "assistant",
       content: reply,
+      tenant_id: tenant.id,
     });
 
     return reply;
