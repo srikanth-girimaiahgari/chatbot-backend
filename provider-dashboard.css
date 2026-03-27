@@ -57,6 +57,70 @@ code {
   margin: 0;
 }
 
+.brand-logo {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 14px;
+}
+
+.logo-badge {
+  width: 88px;
+  height: 88px;
+  border-radius: 26px;
+  background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 40%, #93c5fd 100%);
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-shadow: 0 18px 35px rgba(37, 99, 235, 0.25);
+  font-weight: 900;
+  letter-spacing: -0.06em;
+}
+
+.logo-d,
+.logo-m {
+  line-height: 1;
+  display: inline-block;
+}
+
+.logo-d {
+  font-size: 34px;
+}
+
+.logo-m {
+  font-size: 38px;
+  transform: translateY(1px);
+}
+
+.logo-signal {
+  position: absolute;
+  right: -2px;
+  bottom: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1d4ed8 0%, #06b6d4 100%);
+  box-shadow: 0 12px 24px rgba(29, 78, 216, 0.35);
+}
+
+.logo-signal::before,
+.logo-signal::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-left: 0;
+  border-bottom: 0;
+  border-radius: 0 14px 0 0;
+  transform: rotate(45deg);
+}
+
+.logo-signal::after {
+  inset: 12px;
+}
+
 .brand-block p {
   margin: 10px 0 0;
   color: rgba(255, 255, 255, 0.78);
