@@ -1,6 +1,4 @@
 const express = require("express");
-const path = require("path");
-
 function requireClientToken(req, res, next) {
   const token = req.query.token || req.headers["x-client-token"] || req.headers.authorization?.replace("Bearer ", "");
   if (!token) {
@@ -619,10 +617,9 @@ function buildClientPortalHtml() {
 
 function createClientPortalRouter({ supabase }) {
   const router = express.Router();
-  const portalHtmlPath = path.join(__dirname, "client-portal.html");
 
   router.get("/", (req, res) => {
-    res.sendFile(portalHtmlPath);
+    res.type("html").send(buildClientPortalHtml());
   });
 
   router.use(requireClientToken);
