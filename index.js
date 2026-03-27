@@ -6,17 +6,53 @@ const Anthropic = require("@anthropic-ai/sdk");
 const { Resend } = require("resend");
 const { connectCall } = require("./call-agent");
 const { router: smsAgent, init: initSmsAgent } = require("./sms-agent");
+const {
+  buildMayaSystemPrompt,
+  findMatchingProducts,
+  buildProductResponse,
+  buildBudgetRecommendationResponse
+} = require("./maya-sales-agent");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_KEY;
+
+if (!supabaseKey) {
+  throw new Error("Supabase key is not configured");
+}
+
+const supabase = createClient(process.env.SUPABASE_URL, supabaseKey);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 initSmsAgent(supabase, anthropic, require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN));
+
+function buildConversationHistory(recentChats, latestMessage) {
+  const history = recentChats
+    ? recentChats.reverse().map((m) => ({ role: m.role, content: m.content }))
+    : [];
+
+  history.push({ role: "user", content: latestMessage });
+  return history;
+}
+
+function getDirectProductReply(products, latestMessage) {
+  const matches = findMatchingProducts(products, latestMessage);
+  if (matches.length !== 1) {
+    return null;
+  }
+
+  return buildProductResponse(matches[0], latestMessage);
+}
+
+function getDirectBudgetReply(products, latestMessage) {
+  return buildBudgetRecommendationResponse(products, latestMessage);
+}
 
 app.get("/", (req, res) => {
   res.json({ status: "Chatbot backend is running!" });
@@ -48,43 +84,72 @@ app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
 
   // ── Instagram DMs ────────────────────────────────────────────────
-  if (body.object === "instagram") {
-    for (const entry of body.entry || []) {
-      for (const event of entry.messaging || []) {
-        const senderId   = event.sender?.id;
-        const messageText = event.message?.text;
-        if (event.message?.is_echo) continue;   // ignore bot's own echoes
-        if (!messageText) continue;              // ignore stickers, reactions, etc.
-        console.log(`[Instagram] Message from ${senderId}: ${messageText}`);
-        const mayaReply = await getMayaReplyForInstagram(senderId, messageText);
-        await sendReply(senderId, mayaReply);
-      }
-    }
-    return;
-  }
+ // ── Instagram DMs ────────────────────────────────────────────────
+if (body.object === "instagram") {
+  for (const entry of body.entry || []) {
 
-  // ── WhatsApp Business DMs ────────────────────────────────────────
-  if (body.object === "whatsapp_business_account") {
-    for (const entry of body.entry || []) {
-      for (const change of entry.changes || []) {
-        if (change.field !== "messages") continue;
-        const messages = change.value?.messages || [];
-        for (const msg of messages) {
-          if (msg.type !== "text") continue;          // ignore images, docs, stickers
-          const senderPhone = msg.from;               // e.g. "919876543210"
-          const messageText = msg.text?.body;
-          if (!messageText) continue;
-          console.log(`[WhatsApp] Message from ${senderPhone}: ${messageText}`);
-          const mayaReply = await getMayaReplyForWhatsApp(senderPhone, messageText);
-          await sendWhatsAppReply(senderPhone, mayaReply);
-        }
+    // Look up which tenant owns this Instagram account
+  const { data: tenant, error } = await supabase
+  .from("tenants")
+  .select("*")
+  .eq("ig_business_id", entry.id)
+  .maybeSingle();
+console.log("Searching for ig_business_id:", JSON.stringify(entry.id));
+console.log("Tenant lookup — entry.id:", entry.id, "| tenant found:", tenant?.business_name, "| error:", error?.message);
+    if (!tenant) {
+      console.log(`[Instagram] No tenant found for ig_business_id: ${entry.id}`);
+      continue;
+    }
+
+    for (const event of entry.messaging || []) {
+      const senderId    = event.sender?.id;
+      const messageText = event.message?.text;
+      if (event.message?.is_echo) continue;
+      if (!messageText) continue;
+      console.log(`[Instagram] Message from ${senderId} → tenant: ${tenant.business_name}`);
+      const mayaReply = await getMayaReplyForInstagram(senderId, messageText, tenant);
+      await sendReply(senderId, mayaReply, tenant.ig_access_token);
+    }
+  }
+  return;
+}
+  
+ // ── WhatsApp Business DMs ────────────────────────────────────────
+if (body.object === "whatsapp_business_account") {
+  for (const entry of body.entry || []) {
+    for (const change of entry.changes || []) {
+      if (change.field !== "messages") continue;
+
+      // Look up which tenant owns this WhatsApp number
+      const phoneNumberId = change.value?.metadata?.phone_number_id;
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("*")
+        .eq("wa_phone_number_id", phoneNumberId)
+        .maybeSingle();
+
+      if (!tenant) {
+        console.log(`[WhatsApp] No tenant found for phone_number_id: ${phoneNumberId}`);
+        continue;
+      }
+
+      const messages = change.value?.messages || [];
+      for (const msg of messages) {
+        if (msg.type !== "text") continue;
+        const senderPhone = msg.from;
+        const messageText = msg.text?.body;
+        if (!messageText) continue;
+        console.log(`[WhatsApp] Message from ${senderPhone} → tenant: ${tenant.business_name}`);
+        const mayaReply = await getMayaReplyForWhatsApp(senderPhone, messageText, tenant);
+        await sendWhatsAppReply(senderPhone, mayaReply, tenant.wa_access_token, tenant.wa_phone_number_id);
       }
     }
-    return;
   }
+  return;
+}
 });
 
-async function getMayaReplyForInstagram(senderId, messageText) {
+async function getMayaReplyForInstagram(senderId, messageText, tenant) {
   try {
     // Get or build conversation history from Supabase
     const { data: recentChats } = await supabase
@@ -101,54 +166,26 @@ async function getMayaReplyForInstagram(senderId, messageText) {
       content: messageText,
     });
 
-    const { data: products } = await supabase.from("products").select("*").eq("in_stock", true);
-    const { data: faqs } = await supabase.from("faqs").select("*");
+    const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
+    const { data: faqs }     = await supabase.from("faqs").select("*").eq("tenant_id", tenant.id);
+    const directReply = getDirectProductReply(products, messageText) || getDirectBudgetReply(products, messageText);
+    if (directReply) {
+      await supabase.from("chat_messages").insert({
+        session_id: senderId,
+        role: "assistant",
+        content: directReply,
+      });
+      return directReply;
+    }
 
-    const conversationHistory = recentChats
-      ? recentChats.reverse().map((m) => ({ role: m.role, content: m.content }))
-      : [];
-
-    conversationHistory.push({ role: "user", content: messageText });
-
-    const productList = products && products.length > 0
-      ? products.map((p) => {
-          const sizes = p.sizes_in_stock && p.sizes_in_stock.length > 0
-            ? `Sizes available: ${p.sizes_in_stock.join(", ")}`
-            : "Currently out of stock in all sizes";
-          return `${p.name} — ₹${p.price}\n  ${p.description}\n  ${sizes}`;
-        }).join("\n\n")
-      : "";
-
-    const faqList = faqs && faqs.length > 0
-      ? faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n")
-      : "";
-
-    const systemPrompt = `You are Maya, a warm and stylish pre-sales assistant for an Indian ethnic wear brand. You help customers discover and buy beautiful lehengas, gowns, and festive outfits.
-
-ABOUT THE BUSINESS:
-We sell premium Indian ethnic wear — lehengas, gowns, and festive sets — for weddings, receptions, sangeets, and special occasions. All products are fully stitched, available in sizes S to XXL, with free shipping across India including GST.
-
-PRODUCTS:
-${productList}
-
-FAQS:
-${faqList}
-
-HOW TO HANDLE A CUSTOMER WHO WANTS TO BUY:
-1. First ask their name and what occasion they are shopping for
-2. Then ask how they prefer to be contacted: A. Phone call B. WhatsApp C. Text message D. Email
-3. Then ask for their contact detail (phone number or email)
-4. Then confirm: "Thank you [name]! Our team will [contact method] you at [detail] within minutes!"
-5. End with: HANDOFF_READY|[name]|[occasion]|[contact_method]|[contact_detail]|[product_interest]
-
-IMPORTANT RULES:
-- All prices are in Indian Rupees (₹). Never use $ symbol.
-- Keep replies SHORT — this is an Instagram DM, 2-3 sentences max.
-- Sound warm and conversational, like texting a stylish helpful friend.
-- If asked about size, mention sizes run S to XXL and they should check the size chart.
-- If asked about shipping, mention free shipping across India including GST.
-- Wash care: Cindrella Gown is hand wash. All lehengas are dry clean only.
-- Never make up information not in the product list above.`;
+    const conversationHistory = buildConversationHistory(recentChats, messageText);
+    const systemPrompt = buildMayaSystemPrompt({
+      products,
+      faqs,
+      contextLabel: "Instagram DM",
+      recentChats: recentChats || [],
+      latestMessage: messageText
+    });
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -198,7 +235,7 @@ IMPORTANT RULES:
   }
 }
 
-async function sendReply(recipientId, text) {
+async function sendReply(recipientId, text, accessToken) {
   return new Promise((resolve) => {
     const body = JSON.stringify({
       recipient: { id: recipientId },
@@ -207,7 +244,7 @@ async function sendReply(recipientId, text) {
 
     const options = {
       hostname: "graph.instagram.com",
-      path: `/v21.0/me/messages?access_token=${IG_ACCESS_TOKEN}`,
+      path: `/v21.0/me/messages?access_token=${accessToken}`,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -236,7 +273,7 @@ async function sendReply(recipientId, text) {
 }
 
 // ── WhatsApp: Maya AI reply ───────────────────────────────────────────────────
-async function getMayaReplyForWhatsApp(senderPhone, messageText) {
+async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
   // Use "wa_" prefix so WhatsApp sessions never collide with Instagram sessions
   const sessionId = "wa_" + senderPhone;
 
@@ -257,50 +294,24 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText) {
     const { data: products } = await supabase.from("products").select("*").eq("in_stock", true);
     const { data: faqs }     = await supabase.from("faqs").select("*");
 
-    const conversationHistory = recentChats
-      ? recentChats.reverse().map((m) => ({ role: m.role, content: m.content }))
-      : [];
-    conversationHistory.push({ role: "user", content: messageText });
+    const directReply = getDirectProductReply(products, messageText) || getDirectBudgetReply(products, messageText);
+    if (directReply) {
+      await supabase.from("chat_messages").insert({
+        session_id: sessionId,
+        role: "assistant",
+        content: directReply,
+      });
+      return directReply;
+    }
 
-    const productList = products && products.length > 0
-      ? products.map((p) => {
-          const sizes = p.sizes_in_stock && p.sizes_in_stock.length > 0
-            ? `Sizes available: ${p.sizes_in_stock.join(", ")}`
-            : "Currently out of stock in all sizes";
-          return `${p.name} — ₹${p.price}\n  ${p.description}\n  ${sizes}`;
-        }).join("\n\n")
-      : "";
-
-    const faqList = faqs && faqs.length > 0
-      ? faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n")
-      : "";
-
-    const systemPrompt = `You are Maya, a warm and stylish pre-sales assistant for an Indian ethnic wear brand. You are replying on WhatsApp — keep messages friendly and concise.
-
-ABOUT THE BUSINESS:
-We sell premium Indian ethnic wear — lehengas, gowns, and festive sets — for weddings, receptions, sangeets, and special occasions. All products are fully stitched, available in sizes S to XXL, with free shipping across India including GST.
-
-PRODUCTS:
-${productList}
-
-FAQS:
-${faqList}
-
-HOW TO HANDLE A CUSTOMER WHO WANTS TO BUY:
-1. First ask their name and what occasion they are shopping for
-2. Then ask how they prefer to be contacted: A. Phone call B. WhatsApp C. Text message D. Email
-3. Then ask for their contact detail (phone number or email)
-4. Then confirm: "Thank you [name]! Our team will [contact method] you at [detail] within minutes!"
-5. End with: HANDOFF_READY|[name]|[occasion]|[contact_method]|[contact_detail]|[product_interest]
-
-IMPORTANT RULES:
-- All prices are in Indian Rupees (₹). Never use $ symbol.
-- Keep replies SHORT — this is WhatsApp, 2-3 sentences max.
-- Sound warm and conversational, like texting a helpful friend.
-- If asked about size, mention sizes run S to XXL and they should check the size chart.
-- If asked about shipping, mention free shipping across India including GST.
-- Wash care: Cindrella Gown is hand wash. All lehengas are dry clean only.
-- Never make up information not in the product list above.`;
+    const conversationHistory = buildConversationHistory(recentChats, messageText);
+    const systemPrompt = buildMayaSystemPrompt({
+      products,
+      faqs,
+      contextLabel: "WhatsApp",
+      recentChats: recentChats || [],
+      latestMessage: messageText
+    });
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -349,7 +360,7 @@ IMPORTANT RULES:
 }
 
 // ── WhatsApp: send reply via Cloud API ───────────────────────────────────────
-async function sendWhatsAppReply(toPhone, text) {
+async function sendWhatsAppReply(toPhone, text, accessToken, phoneNumberId) {
   return new Promise((resolve) => {
     const body = JSON.stringify({
       messaging_product: "whatsapp",
@@ -360,12 +371,12 @@ async function sendWhatsAppReply(toPhone, text) {
 
     const options = {
       hostname: "graph.facebook.com",
-      path: `/v21.0/${WA_PHONE_NUMBER_ID}/messages`,
+      path: `/v21.0/${phoneNumberId}/messages`,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(body),
-        "Authorization": `Bearer ${WA_ACCESS_TOKEN}`,
+        "Authorization": `Bearer ${accessToken}`,
       },
     };
 
@@ -431,50 +442,20 @@ app.post("/chat", async (req, res) => {
       .order("created_at", { ascending: false })
       .limit(10);
 
-    const conversationHistory = recentChats
-      ? recentChats.reverse().map(function(m) { return { role: m.role, content: m.content }; })
-      : [{ role: "user", content: message }];
+    const directReply = getDirectProductReply(products, message) || getDirectBudgetReply(products, message);
+    if (directReply) {
+      await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: directReply });
+      return res.json({ reply: directReply });
+    }
 
-    const productList = products && products.length > 0
-      ? products.map(function(p) {
-          var sizes = p.sizes_in_stock && p.sizes_in_stock.length > 0
-            ? "Sizes available: " + p.sizes_in_stock.join(", ")
-            : "Currently out of stock in all sizes";
-          return p.name + " — ₹" + p.price + "\n  " + p.description + "\n  " + sizes;
-        }).join("\n\n")
-      : "";
-
-    const faqList = faqs && faqs.length > 0
-      ? faqs.map(function(f) { return "Q: " + f.question + "\nA: " + f.answer; }).join("\n\n")
-      : "";
-
-    const systemPrompt = "You are Maya, a warm and stylish pre-sales assistant for an Indian ethnic wear brand.\n\n" +
-"ABOUT THE BUSINESS:\n" +
-"We sell premium Indian ethnic wear — lehengas, gowns, and festive sets — for weddings, receptions, sangeets, and special occasions. All products are fully stitched, available in sizes S to XXL, with free shipping across India including GST.\n\n" +
-"PRODUCTS:\n" + productList + "\n\n" +
-"FAQS:\n" + faqList + "\n\n" +
-"POLICIES:\n" +
-"- All prices are in Indian Rupees (₹). Never use $ symbol.\n" +
-"- Free shipping across India, price includes GST.\n" +
-"- Sizes available: S to XXL. Customers should check the size chart before ordering.\n" +
-"- Wash care: Cindrella Gown — hand wash. All lehengas — dry clean only.\n" +
-"- Each set includes all pieces listed (blouse + skirt + dupatta where applicable).\n\n" +
-"HOW TO HANDLE A CUSTOMER WHO WANTS TO BUY:\n" +
-"1. First ask their name and what occasion they are shopping for\n" +
-"2. Then ask how they prefer to be contacted: A. Phone call B. WhatsApp C. Text message D. Email\n" +
-"3. Then ask for their contact detail (phone number or email)\n" +
-"4. Then confirm: 'Thank you [name]! Our team will [contact method] you at [detail] within minutes!'\n" +
-"5. End with: HANDOFF_READY|[name]|[occasion]|[contact_method]|[contact_detail]|[product_interest]\n\n" +
-"HOW TO HANDLE A HUMAN AGENT REQUEST:\n" +
-"1. Say: 'I am connecting you to our team right now. Someone will be with you shortly!'\n" +
-"2. End with: HUMAN_HANDOFF|[session_id]\n\n" +
-"IMPORTANT RULES:\n" +
-"- Always answer any question the customer asks, even mid-purchase flow\n" +
-"- Never ignore a question to push the purchase flow\n" +
-"- Keep responses under 3 sentences unless listing products\n" +
-"- Sound like a helpful human sales assistant\n" +
-"- Never make up information not provided above\n" +
-"- If customer changes their mind mid-flow, handle it naturally";
+    const conversationHistory = buildConversationHistory(recentChats, message);
+    const systemPrompt = buildMayaSystemPrompt({
+      products,
+      faqs,
+      contextLabel: "Website chat",
+      recentChats: recentChats || [],
+      latestMessage: message
+    });
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
