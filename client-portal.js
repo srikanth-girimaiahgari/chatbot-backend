@@ -215,6 +215,9 @@ async function getClientOverview(supabase, tenant) {
       instagram_connection_status: tenant.instagram_connection_status || "not_started",
       connect_instagram_requested: Boolean(tenant.connect_instagram_requested),
       connect_instagram_notes: tenant.connect_instagram_notes || null,
+      admin_connection_confirmed: Boolean(tenant.admin_connection_confirmed),
+      client_connection_confirmed: Boolean(tenant.client_connection_confirmed),
+      activation_status: tenant.activation_status || "setup_incomplete",
       onboarding_status: tenant.onboarding_status || "signup_pending",
       instagram_connected: Boolean(tenant.ig_business_id && tenant.ig_access_token),
       whatsapp_connected: Boolean(tenant.wa_phone_number_id && tenant.wa_access_token),
@@ -249,10 +252,13 @@ async function getClientSessionPayload(supabase, tenant) {
       profile_completed: Boolean(tenant.owner_name && tenant.owner_email && tenant.business_name),
       instagram_setup_started: Boolean(tenant.instagram_username || tenant.facebook_page_name || tenant.connect_instagram_requested),
       instagram_connected: Boolean(tenant.ig_business_id && tenant.ig_access_token),
+      admin_connection_confirmed: Boolean(tenant.admin_connection_confirmed),
+      client_connection_confirmed: Boolean(tenant.client_connection_confirmed),
       hours_completed: Boolean(tenant.response_window_start && tenant.response_window_end),
       catalog_ready: metrics.products_count > 0,
       faq_ready: metrics.faqs_count > 0,
-      launch_ready: metrics.products_count > 0 && metrics.faqs_count > 0 && Boolean(tenant.response_window_start && tenant.response_window_end)
+      launch_ready: metrics.products_count > 0 && metrics.faqs_count > 0 && Boolean(tenant.response_window_start && tenant.response_window_end),
+      ready_for_client_confirmation: Boolean(tenant.admin_connection_confirmed) && !tenant.client_connection_confirmed
     },
     metrics
   };
@@ -530,6 +536,13 @@ function buildClientPortalHtml() {
     .helper-card strong {
       color: #3d345d;
     }
+    .confirmation-card {
+      border-radius: 18px;
+      padding: 16px 18px;
+      background: linear-gradient(180deg, #fffaf0 0%, #fff6e8 100%);
+      border: 1px solid #f3dfb3;
+      color: #6a4d15;
+    }
     .auth-message {
       display: none;
       border-radius: 14px;
@@ -601,6 +614,16 @@ function buildClientPortalHtml() {
       cursor: pointer;
     }
     .nav button.active { background: rgba(255,255,255,0.22); }
+    .logout-btn {
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.08);
+      color: white;
+      padding: 12px 14px;
+      text-align: left;
+      cursor: pointer;
+      font-weight: 700;
+    }
     .side-card {
       border-radius: 18px;
       padding: 14px;
@@ -666,10 +689,47 @@ function buildClientPortalHtml() {
     .panel { display: none; }
     .panel.visible { display: block; }
     .card { padding: 18px; }
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
     .section-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 18px;
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .small-btn {
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #f1ebff;
+      color: #4b4265;
+    }
+    .small-btn.danger {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .action-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .management-form {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 12px;
     }
     table {
       width: 100%;
@@ -890,6 +950,10 @@ function buildClientPortalHtml() {
               <input id="signup-password" type="password" name="password" placeholder="Choose a secure password" required />
             </div>
             <div class="field">
+              <label for="signup-confirm-password">Confirm Password</label>
+              <input id="signup-confirm-password" type="password" name="confirm_password" placeholder="Re-enter your password" required />
+            </div>
+            <div class="field">
               <label for="signup-category">Business Category</label>
               <input id="signup-category" name="business_category" placeholder="Jewelry, Sarees, Fashion" />
             </div>
@@ -955,6 +1019,13 @@ function buildClientPortalHtml() {
           </div>
           <div class="helper-card">
             <strong>Built for a hassle-free launch:</strong> start with the essentials first. You can always improve your catalog, FAQs, and channel connections after the first version is live.
+          </div>
+          <div id="client-confirmation-card" class="confirmation-card" style="display:none;">
+            <strong>Final confirmation needed.</strong>
+            <p style="margin-top:8px;">DigiMaya has finished the Instagram connection on the admin side. Review your setup and confirm to activate your workspace.</p>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button id="client-confirm-connection" class="primary-btn" type="button">Confirm Connection</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1142,6 +1213,9 @@ function buildClientPortalHtml() {
         <button class="active" data-panel="overview">Overview</button>
         <button data-panel="conversations">Conversations</button>
         <button data-panel="leads">Leads</button>
+        <button data-panel="catalog">Catalog</button>
+        <button data-panel="faqs">FAQs</button>
+        <button data-panel="settings">Settings</button>
         <button data-panel="performance">Performance</button>
       </div>
 
@@ -1151,6 +1225,7 @@ function buildClientPortalHtml() {
         <p>If you notice an issue or need changes, contact us directly and we’ll help quickly.</p>
         <a id="support-link" class="support-cta" href="mailto:${supportEmail}?subject=DigiMaya%20Client%20Support">Contact Support</a>
       </div>
+      <button id="logout-button" class="logout-btn" type="button">Log Out</button>
     </aside>
 
     <main class="main">
@@ -1192,6 +1267,164 @@ function buildClientPortalHtml() {
         </div>
       </section>
 
+      <section class="panel" data-panel="catalog">
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h3>Catalog Manager</h3>
+              <div class="muted-note">Add, edit, or remove products anytime after launch.</div>
+            </div>
+          </div>
+          <div id="catalog-table"></div>
+          <form id="catalog-management-form" class="management-form">
+            <input id="manage-product-id" type="hidden" name="product_id" />
+            <div class="field-grid">
+              <div class="field">
+                <label for="manage-product-name">Product Name</label>
+                <input id="manage-product-name" name="name" required />
+              </div>
+              <div class="field">
+                <label for="manage-product-category">Category</label>
+                <input id="manage-product-category" name="category" />
+              </div>
+              <div class="field">
+                <label for="manage-product-price">Selling Price</label>
+                <input id="manage-product-price" type="number" step="0.01" name="price" required />
+              </div>
+              <div class="field">
+                <label for="manage-product-regular-price">Regular Price</label>
+                <input id="manage-product-regular-price" type="number" step="0.01" name="regular_price" />
+              </div>
+              <div class="field">
+                <label for="manage-product-color">Color</label>
+                <input id="manage-product-color" name="color" />
+              </div>
+              <div class="field">
+                <label for="manage-product-url">Product URL</label>
+                <input id="manage-product-url" name="product_url" />
+              </div>
+              <div class="field full">
+                <label for="manage-product-description">Description</label>
+                <textarea id="manage-product-description" name="description"></textarea>
+              </div>
+            </div>
+            <div class="inline-actions">
+              <button id="save-product-button" class="primary-btn" type="submit">Save Product</button>
+              <button id="cancel-product-edit" class="secondary-btn" type="button">Cancel Edit</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="faqs">
+        <div class="card">
+          <div class="toolbar">
+            <div>
+              <h3>FAQ Manager</h3>
+              <div class="muted-note">Keep adding, editing, or removing FAQs as your customers ask new questions.</div>
+            </div>
+          </div>
+          <div id="faqs-table"></div>
+          <form id="faq-management-form" class="management-form">
+            <input id="manage-faq-id" type="hidden" name="faq_id" />
+            <div class="field-grid">
+              <div class="field full">
+                <label for="manage-faq-question">Question</label>
+                <input id="manage-faq-question" name="question" required />
+              </div>
+              <div class="field full">
+                <label for="manage-faq-answer">Answer</label>
+                <textarea id="manage-faq-answer" name="answer" required></textarea>
+              </div>
+            </div>
+            <div class="inline-actions">
+              <button id="save-faq-button" class="primary-btn" type="submit">Save FAQ</button>
+              <button id="cancel-faq-edit" class="secondary-btn" type="button">Cancel Edit</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="settings">
+        <div class="stack">
+          <div class="card">
+            <h3>Profile Settings</h3>
+            <div class="muted-note">Update your account, contact details, and business information anytime.</div>
+            <form id="settings-profile-form" class="management-form">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="settings-business-name">Business Name</label>
+                  <input id="settings-business-name" name="business_name" required />
+                </div>
+                <div class="field">
+                  <label for="settings-owner-name">Owner Name</label>
+                  <input id="settings-owner-name" name="owner_name" required />
+                </div>
+                <div class="field">
+                  <label for="settings-owner-email">Owner Email</label>
+                  <input id="settings-owner-email" type="email" name="owner_email" required />
+                </div>
+                <div class="field">
+                  <label for="settings-timezone">Timezone</label>
+                  <input id="settings-timezone" name="timezone" />
+                </div>
+                <div class="field">
+                  <label for="settings-category">Business Category</label>
+                  <input id="settings-category" name="business_category" />
+                </div>
+                <div class="field">
+                  <label for="settings-instagram">Instagram Username</label>
+                  <input id="settings-instagram" name="instagram_username" />
+                </div>
+                <div class="field">
+                  <label for="settings-facebook-page">Facebook Page Name</label>
+                  <input id="settings-facebook-page" name="facebook_page_name" />
+                </div>
+                <div class="field">
+                  <label for="settings-contact-method">Preferred Contact Method</label>
+                  <select id="settings-contact-method" name="preferred_contact_method">
+                    <option value="email">Email</option>
+                    <option value="phone">Phone</option>
+                    <option value="whatsapp">WhatsApp</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="settings-lead-email">Lead Contact Email</label>
+                  <input id="settings-lead-email" type="email" name="lead_contact_email" />
+                </div>
+                <div class="field">
+                  <label for="settings-lead-phone">Lead Contact Phone</label>
+                  <input id="settings-lead-phone" name="lead_contact_phone" />
+                </div>
+              </div>
+              <button class="primary-btn" type="submit">Save Profile Changes</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h3>Availability Settings</h3>
+            <div class="muted-note">Adjust your response window and after-hours message without going through onboarding again.</div>
+            <form id="settings-availability-form" class="management-form">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="settings-hours-start">Start Time</label>
+                  <input id="settings-hours-start" type="time" name="response_window_start" required />
+                </div>
+                <div class="field">
+                  <label for="settings-hours-end">End Time</label>
+                  <input id="settings-hours-end" type="time" name="response_window_end" required />
+                </div>
+                <div class="field full">
+                  <label for="settings-hours-reply">After-hours Lead Reply</label>
+                  <textarea id="settings-hours-reply" name="off_hours_reply"></textarea>
+                </div>
+              </div>
+              <button class="primary-btn" type="submit">Save Availability Changes</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
       <section class="panel" data-panel="performance">
         <div class="card">
           <h3>Performance Review</h3>
@@ -1212,7 +1445,11 @@ function buildClientPortalHtml() {
         overview: null,
         conversations: [],
         leads: [],
-        performance: null
+        performance: null,
+        catalog: {
+          products: [],
+          faqs: []
+        }
       };
 
       function getAuthHeaders() {
@@ -1339,12 +1576,31 @@ function buildClientPortalHtml() {
         );
       }
 
+      function resetManagedProductForm() {
+        document.getElementById("catalog-management-form").reset();
+        document.getElementById("manage-product-id").value = "";
+        document.getElementById("save-product-button").textContent = "Save Product";
+      }
+
+      function resetManagedFaqForm() {
+        document.getElementById("faq-management-form").reset();
+        document.getElementById("manage-faq-id").value = "";
+        document.getElementById("save-faq-button").textContent = "Save FAQ";
+      }
+
       function renderOnboarding() {
         const tenant = state.session.tenant;
         const onboarding = state.session.onboarding;
         document.getElementById("onboarding-business-name").textContent = tenant.business_name || "Finish your onboarding";
         document.getElementById("current-off-hours-copy").textContent = tenant.off_hours_reply || "DigiMaya will collect the lead and promise a follow-up when your team is available.";
-        document.getElementById("current-onboarding-status").textContent = onboarding.launch_ready ? "Launch ready" : "Setup in progress";
+        document.getElementById("current-onboarding-status").textContent =
+          tenant.activation_status === "active"
+            ? "Active"
+            : onboarding.ready_for_client_confirmation
+              ? "Waiting for your confirmation"
+              : onboarding.launch_ready
+                ? "Launch ready"
+                : "Setup in progress";
 
         document.getElementById("profile-business-name").value = tenant.business_name || "";
         document.getElementById("profile-owner-name").value = tenant.owner_name || "";
@@ -1362,11 +1618,26 @@ function buildClientPortalHtml() {
         document.getElementById("hours-start").value = tenant.response_window_start || "";
         document.getElementById("hours-end").value = tenant.response_window_end || "";
         document.getElementById("hours-reply").value = tenant.off_hours_reply || "";
+        document.getElementById("settings-business-name").value = tenant.business_name || "";
+        document.getElementById("settings-owner-name").value = tenant.owner_name || "";
+        document.getElementById("settings-owner-email").value = tenant.owner_email || "";
+        document.getElementById("settings-timezone").value = tenant.timezone || "Asia/Kolkata";
+        document.getElementById("settings-category").value = tenant.business_category || "";
+        document.getElementById("settings-instagram").value = tenant.instagram_username || "";
+        document.getElementById("settings-facebook-page").value = tenant.facebook_page_name || "";
+        document.getElementById("settings-contact-method").value = tenant.preferred_contact_method || "email";
+        document.getElementById("settings-lead-email").value = tenant.lead_contact_email || "";
+        document.getElementById("settings-lead-phone").value = tenant.lead_contact_phone || "";
+        document.getElementById("settings-hours-start").value = tenant.response_window_start || "";
+        document.getElementById("settings-hours-end").value = tenant.response_window_end || "";
+        document.getElementById("settings-hours-reply").value = tenant.off_hours_reply || "";
 
         const checklist = [
           ["Business profile", onboarding.profile_completed],
           ["Instagram setup started", onboarding.instagram_setup_started],
           ["Instagram connected", onboarding.instagram_connected],
+          ["Admin confirmed connection", onboarding.admin_connection_confirmed],
+          ["Client confirmed connection", onboarding.client_connection_confirmed],
           ["Availability rules", onboarding.hours_completed],
           ["At least one product", onboarding.catalog_ready],
           ["At least one FAQ", onboarding.faq_ready],
@@ -1376,6 +1647,9 @@ function buildClientPortalHtml() {
         document.getElementById("onboarding-checklist").innerHTML = checklist.map(function (item) {
           return '<div class="item"><span>' + item[0] + '</span><span class="badge">' + (item[1] ? "Done" : "Pending") + '</span></div>';
         }).join("");
+
+        document.getElementById("client-confirmation-card").style.display =
+          onboarding.ready_for_client_confirmation ? "block" : "none";
       }
 
       function shouldShowOnboarding() {
@@ -1419,11 +1693,12 @@ function buildClientPortalHtml() {
 
       async function loadDashboardData() {
         setError("");
-        const [overview, conversations, leads, performance] = await Promise.all([
+        const [overview, conversations, leads, performance, catalog] = await Promise.all([
           fetchJson("/client/overview"),
           fetchJson("/client/conversations"),
           fetchJson("/client/leads"),
-          fetchJson("/client/performance")
+          fetchJson("/client/performance"),
+          fetchJson("/client/catalog")
         ]);
 
         state.overview = overview;
@@ -1435,11 +1710,98 @@ function buildClientPortalHtml() {
           top_products: [],
           handoff_rate: 0
         };
+        state.catalog = {
+          products: catalog.products || [],
+          faqs: catalog.faqs || []
+        };
 
         renderOverview();
         renderConversations();
         renderLeads();
         renderPerformance();
+        renderCatalog();
+        renderFaqs();
+        resetManagedProductForm();
+        resetManagedFaqForm();
+      }
+
+      function renderCatalog() {
+        buildTable(
+          "catalog-table",
+          state.catalog.products,
+          [
+            { label: "Product", render: (row) => row.name || "—" },
+            { label: "Category", render: (row) => row.category || "—" },
+            { label: "Price", render: (row) => row.price == null ? "—" : row.price },
+            { label: "Color", render: (row) => row.color || "—" },
+            { label: "Actions", render: (row) => '<div class="action-row"><button class="small-btn" type="button" data-edit-product="' + row.id + '">Edit</button><button class="small-btn danger" type="button" data-delete-product="' + row.id + '">Delete</button></div>' }
+          ],
+          "No products yet."
+        );
+
+        document.querySelectorAll("[data-edit-product]").forEach((button) => {
+          button.addEventListener("click", function () {
+            const product = state.catalog.products.find((item) => item.id === button.dataset.editProduct);
+            if (!product) return;
+            document.getElementById("manage-product-id").value = product.id;
+            document.getElementById("manage-product-name").value = product.name || "";
+            document.getElementById("manage-product-category").value = product.category || "";
+            document.getElementById("manage-product-price").value = product.price == null ? "" : product.price;
+            document.getElementById("manage-product-regular-price").value = product.regular_price == null ? "" : product.regular_price;
+            document.getElementById("manage-product-color").value = product.color || "";
+            document.getElementById("manage-product-url").value = product.product_url || "";
+            document.getElementById("manage-product-description").value = product.description || "";
+            document.getElementById("save-product-button").textContent = "Update Product";
+          });
+        });
+
+        document.querySelectorAll("[data-delete-product]").forEach((button) => {
+          button.addEventListener("click", async function () {
+            if (!window.confirm("Delete this product from your catalog?")) return;
+            try {
+              await fetchJson("/client/catalog/product/" + button.dataset.deleteProduct, { method: "DELETE" });
+              await loadDashboardData();
+            } catch (error) {
+              setError(error.message);
+            }
+          });
+        });
+      }
+
+      function renderFaqs() {
+        buildTable(
+          "faqs-table",
+          state.catalog.faqs,
+          [
+            { label: "Question", render: (row) => row.question || "—" },
+            { label: "Answer", render: (row) => row.answer || "—" },
+            { label: "Actions", render: (row) => '<div class="action-row"><button class="small-btn" type="button" data-edit-faq="' + row.id + '">Edit</button><button class="small-btn danger" type="button" data-delete-faq="' + row.id + '">Delete</button></div>' }
+          ],
+          "No FAQs yet."
+        );
+
+        document.querySelectorAll("[data-edit-faq]").forEach((button) => {
+          button.addEventListener("click", function () {
+            const faq = state.catalog.faqs.find((item) => item.id === button.dataset.editFaq);
+            if (!faq) return;
+            document.getElementById("manage-faq-id").value = faq.id;
+            document.getElementById("manage-faq-question").value = faq.question || "";
+            document.getElementById("manage-faq-answer").value = faq.answer || "";
+            document.getElementById("save-faq-button").textContent = "Update FAQ";
+          });
+        });
+
+        document.querySelectorAll("[data-delete-faq]").forEach((button) => {
+          button.addEventListener("click", async function () {
+            if (!window.confirm("Delete this FAQ?")) return;
+            try {
+              await fetchJson("/client/catalog/faq/" + button.dataset.deleteFaq, { method: "DELETE" });
+              await loadDashboardData();
+            } catch (error) {
+              setError(error.message);
+            }
+          });
+        });
       }
 
       function renderConversations() {
@@ -1532,6 +1894,9 @@ function buildClientPortalHtml() {
           setAuthMessage("");
           const form = new FormData(event.target);
           const payload = Object.fromEntries(form.entries());
+          if (payload.password !== payload.confirm_password) {
+            throw new Error("Password and confirm password must match");
+          }
           const response = await postJson("/client/auth/signup", payload);
           setToken(response.token);
           setAuthMessage("Your DigiMaya account is ready. Let’s finish onboarding.", "success");
@@ -1553,6 +1918,19 @@ function buildClientPortalHtml() {
         } catch (error) {
           setAuthMessage(error.message, "error");
         }
+      });
+
+      document.getElementById("logout-button").addEventListener("click", async function () {
+        try {
+          await postJson("/client/auth/logout");
+        } catch (error) {
+          // no-op: local logout should still clear the session
+        }
+        setToken("");
+        state.session = null;
+        state.catalog = { products: [], faqs: [] };
+        showShell("auth");
+        setAuthMessage("You have been logged out.", "success");
       });
 
       document.getElementById("business-profile-form").addEventListener("submit", async function (event) {
@@ -1613,6 +1991,84 @@ function buildClientPortalHtml() {
         }
       });
 
+      document.getElementById("catalog-management-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          const form = new FormData(event.target);
+          const payload = Object.fromEntries(form.entries());
+          const productId = payload.product_id;
+          delete payload.product_id;
+          if (productId) {
+            await fetchJson("/client/catalog/product/" + productId, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+          } else {
+            await postJson("/client/onboarding/catalog/product", payload);
+          }
+          await loadDashboardData();
+        } catch (error) {
+          setError(error.message);
+        }
+      });
+
+      document.getElementById("cancel-product-edit").addEventListener("click", function () {
+        resetManagedProductForm();
+      });
+
+      document.getElementById("faq-management-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          const form = new FormData(event.target);
+          const payload = Object.fromEntries(form.entries());
+          const faqId = payload.faq_id;
+          delete payload.faq_id;
+          if (faqId) {
+            await fetchJson("/client/catalog/faq/" + faqId, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+          } else {
+            await postJson("/client/onboarding/catalog/faq", payload);
+          }
+          await loadDashboardData();
+        } catch (error) {
+          setError(error.message);
+        }
+      });
+
+      document.getElementById("cancel-faq-edit").addEventListener("click", function () {
+        resetManagedFaqForm();
+      });
+
+      document.getElementById("settings-profile-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          const form = new FormData(event.target);
+          const payload = Object.fromEntries(form.entries());
+          await postJson("/client/onboarding/profile", payload);
+          await loadSession();
+          await loadDashboardData();
+        } catch (error) {
+          setError(error.message);
+        }
+      });
+
+      document.getElementById("settings-availability-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          const form = new FormData(event.target);
+          const payload = Object.fromEntries(form.entries());
+          await postJson("/client/onboarding/availability", payload);
+          await loadSession();
+          await loadDashboardData();
+        } catch (error) {
+          setError(error.message);
+        }
+      });
+
       document.getElementById("mark-launch-ready").addEventListener("click", async function () {
         try {
           setOnboardingMessage("");
@@ -1628,6 +2084,17 @@ function buildClientPortalHtml() {
         try {
           await loadDashboardData();
           showShell("dashboard");
+        } catch (error) {
+          setOnboardingMessage(error.message, "error");
+        }
+      });
+
+      document.getElementById("client-confirm-connection").addEventListener("click", async function () {
+        try {
+          setOnboardingMessage("");
+          await postJson("/client/onboarding/confirm-connection");
+          setOnboardingMessage("Your connection is now confirmed and your workspace is active.", "success");
+          await loadSession();
         } catch (error) {
           setOnboardingMessage(error.message, "error");
         }
@@ -1653,6 +2120,7 @@ function createClientPortalRouter({ supabase, resend }) {
       const ownerName = safeText(req.body.owner_name);
       const ownerEmail = normalizeEmail(req.body.owner_email);
       const password = safeText(req.body.password);
+      const confirmPassword = safeText(req.body.confirm_password);
 
       if (!businessName || !ownerName || !ownerEmail || !password) {
         return res.status(400).json({ error: "Business name, owner name, email, and password are required" });
@@ -1660,6 +2128,10 @@ function createClientPortalRouter({ supabase, resend }) {
 
       if (password.length < 8) {
         return res.status(400).json({ error: "Password should be at least 8 characters" });
+      }
+
+      if (password !== confirmPassword) {
+        return res.status(400).json({ error: "Password and confirm password must match" });
       }
 
       const result = await createTenantAccount(supabase, req.body);
@@ -1679,6 +2151,10 @@ function createClientPortalRouter({ supabase, resend }) {
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
+  });
+
+  router.post("/auth/logout", async (req, res) => {
+    res.json({ ok: true });
   });
 
   router.post("/auth/login", async (req, res) => {
@@ -1738,6 +2214,38 @@ function createClientPortalRouter({ supabase, resend }) {
     try {
       const payload = await getClientSessionPayload(supabase, req.tenant);
       res.json(payload);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get("/catalog", async (req, res) => {
+    try {
+      const [productsResult, faqsResult] = await Promise.all([
+        supabase
+          .from("products")
+          .select("*")
+          .eq("tenant_id", req.tenant.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("faqs")
+          .select("*")
+          .eq("tenant_id", req.tenant.id)
+          .order("created_at", { ascending: false })
+      ]);
+
+      if (productsResult.error) {
+        throw productsResult.error;
+      }
+
+      if (faqsResult.error) {
+        throw faqsResult.error;
+      }
+
+      res.json({
+        products: productsResult.data || [],
+        faqs: faqsResult.data || []
+      });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -1894,6 +2402,95 @@ function createClientPortalRouter({ supabase, resend }) {
     }
   });
 
+  router.put("/catalog/product/:productId", async (req, res) => {
+    try {
+      const updatePayload = {
+        name: safeText(req.body.name),
+        description: safeText(req.body.description),
+        price: Number(req.body.price),
+        regular_price: req.body.regular_price === "" || req.body.regular_price == null ? null : Number(req.body.regular_price),
+        category: safeText(req.body.category),
+        color: safeText(req.body.color),
+        product_url: safeText(req.body.product_url)
+      };
+
+      const { data, error } = await supabase
+        .from("products")
+        .update(updatePayload)
+        .eq("id", req.params.productId)
+        .eq("tenant_id", req.tenant.id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ product: data });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.delete("/catalog/product/:productId", async (req, res) => {
+    try {
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", req.params.productId)
+        .eq("tenant_id", req.tenant.id);
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.put("/catalog/faq/:faqId", async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("faqs")
+        .update({
+          question: safeText(req.body.question),
+          answer: safeText(req.body.answer)
+        })
+        .eq("id", req.params.faqId)
+        .eq("tenant_id", req.tenant.id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ faq: data });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.delete("/catalog/faq/:faqId", async (req, res) => {
+    try {
+      const { error } = await supabase
+        .from("faqs")
+        .delete()
+        .eq("id", req.params.faqId)
+        .eq("tenant_id", req.tenant.id);
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.post("/onboarding/complete", async (req, res) => {
     try {
       const session = await getClientSessionPayload(supabase, req.tenant);
@@ -1915,6 +2512,32 @@ function createClientPortalRouter({ supabase, resend }) {
       }
 
       res.json({ tenant: data, launch_ready: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/onboarding/confirm-connection", async (req, res) => {
+    try {
+      if (!req.tenant.admin_connection_confirmed) {
+        return res.status(400).json({ error: "The DigiMaya admin team has not confirmed your Instagram connection yet" });
+      }
+
+      const { data, error } = await supabase
+        .from("tenants")
+        .update({
+          client_connection_confirmed: true,
+          activation_status: "active"
+        })
+        .eq("id", req.tenant.id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ tenant: data, activated: true });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

@@ -219,6 +219,17 @@ code {
   box-shadow: 0 12px 24px rgba(116, 100, 199, 0.22);
 }
 
+.button-secondary {
+  border: 0;
+  border-radius: 14px;
+  background: #efe9fb;
+  color: #4d4369;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .error-banner {
   margin-bottom: 18px;
   border-radius: 16px;
@@ -283,6 +294,12 @@ code {
   margin-bottom: 16px;
 }
 
+.card-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -337,6 +354,64 @@ code {
 
 .tenant-name {
   font-weight: 700;
+}
+
+.subtext {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tenant-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.detail-chip {
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fbf8ff 0%, #f1ebff 100%);
+  border: 1px solid var(--line);
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.detail-chip .label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.detail-chip .value {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.detail-section {
+  margin-top: 16px;
+}
+
+.detail-section h4 {
+  margin: 0 0 10px;
+}
+
+.activation-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fffaf0 0%, #fff6e8 100%);
+  border: 1px solid #f3dfb3;
+}
+
+.activation-status {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .subtext {

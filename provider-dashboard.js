@@ -46,6 +46,20 @@
     });
   }
 
+  function postJson(path, body) {
+    return fetch(path, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, headers),
+      body: JSON.stringify(body || {})
+    }).then(async (response) => {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || ("Request failed: " + response.status));
+      }
+      return payload;
+    });
+  }
+
   function renderSummaryCards(summary) {
     const summaryGrid = document.getElementById("summary-grid");
     const cards = [
@@ -136,6 +150,20 @@
 
     container.classList.remove("empty-state");
     container.innerHTML =
+      '<div class="activation-card">' +
+        '<div class="eyebrow">Activation Flow</div>' +
+        '<h4 style="margin:8px 0 6px;">Instagram connection confirmation</h4>' +
+        '<div class="subtext">Admin confirms the Instagram connection first. After that, the client sees their final confirmation step and can activate their workspace.</div>' +
+        '<div class="activation-status">' +
+          '<span class="status-pill ' + (tenant.instagram_connected ? "healthy" : "needs_setup") + '">Instagram ' + (tenant.instagram_connected ? "connected" : "not connected") + '</span>' +
+          '<span class="status-pill ' + (tenant.admin_connection_confirmed ? "healthy" : "needs_attention") + '">Admin ' + (tenant.admin_connection_confirmed ? "confirmed" : "pending") + '</span>' +
+          '<span class="status-pill ' + (tenant.client_connection_confirmed ? "healthy" : "needs_attention") + '">Client ' + (tenant.client_connection_confirmed ? "confirmed" : "pending") + '</span>' +
+          '<span class="status-pill ' + (tenant.activation_status === "active" ? "healthy" : "needs_attention") + '">' + escapeHtml(String(tenant.activation_status || "setup_incomplete")).replaceAll("_", " ") + '</span>' +
+        '</div>' +
+        (!tenant.admin_connection_confirmed
+          ? '<div class="card-actions" style="margin-top:14px;"><button id="confirm-connection-button" class="button-primary" type="button">Confirm Connection</button></div>'
+          : "") +
+      '</div>' +
       '<div class="tenant-detail-grid">' +
         renderDetailChip("Health", tenant.health.status.replace(/_/g, " ")) +
         renderDetailChip("Products", tenant.catalog.productsCount) +
@@ -171,6 +199,18 @@
           { label: "Link", render: (row) => row.product_url ? '<a href="' + row.product_url + '" target="_blank" rel="noreferrer">Open</a>' : "—" }
         ], "No products loaded for this tenant.") +
       '</div>';
+
+    const confirmButton = document.getElementById("confirm-connection-button");
+    if (confirmButton) {
+      confirmButton.addEventListener("click", async function () {
+        try {
+          await postJson("/admin/tenants/" + tenant.id + "/confirm-connection");
+          await loadAll();
+        } catch (error) {
+          setError(error.message);
+        }
+      });
+    }
   }
 
   function renderDetailChip(label, value) {
