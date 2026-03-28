@@ -928,6 +928,27 @@ function buildClientPortalHtml() {
       display: grid;
       gap: 12px;
     }
+    .management-form.editing {
+      padding: 18px;
+      border: 1px solid #dfd2fb;
+      border-radius: 20px;
+      background: linear-gradient(180deg, #fcfaff 0%, #f5efff 100%);
+      box-shadow: 0 16px 38px rgba(64, 49, 113, 0.08);
+    }
+    .edit-state {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: #efe8ff;
+      color: #4e4176;
+      font-weight: 700;
+    }
+    .edit-state.visible {
+      display: flex;
+    }
     .management-form.hidden,
     .section-summary.hidden {
       display: none;
@@ -1656,6 +1677,7 @@ function buildClientPortalHtml() {
           <div id="catalog-table"></div>
           <form id="catalog-management-form" class="management-form">
             <input id="manage-product-id" type="hidden" name="product_id" />
+            <div id="catalog-edit-state" class="edit-state" aria-live="polite"></div>
             <div class="field-grid">
               <div class="field">
                 <label for="manage-product-name">Product Name</label>
@@ -1705,6 +1727,7 @@ function buildClientPortalHtml() {
           <div id="faqs-table"></div>
           <form id="faq-management-form" class="management-form">
             <input id="manage-faq-id" type="hidden" name="faq_id" />
+            <div id="faq-edit-state" class="edit-state" aria-live="polite"></div>
             <div class="field-grid">
               <div class="field full">
                 <label for="manage-faq-question">Question</label>
@@ -2084,12 +2107,55 @@ function buildClientPortalHtml() {
         document.getElementById("catalog-management-form").reset();
         document.getElementById("manage-product-id").value = "";
         document.getElementById("save-product-button").textContent = "Save Product";
+        document.getElementById("catalog-management-form").classList.remove("editing");
+        const editState = document.getElementById("catalog-edit-state");
+        editState.classList.remove("visible");
+        editState.textContent = "";
       }
 
       function resetManagedFaqForm() {
         document.getElementById("faq-management-form").reset();
         document.getElementById("manage-faq-id").value = "";
         document.getElementById("save-faq-button").textContent = "Save FAQ";
+        document.getElementById("faq-management-form").classList.remove("editing");
+        const editState = document.getElementById("faq-edit-state");
+        editState.classList.remove("visible");
+        editState.textContent = "";
+      }
+
+      function beginManagedProductEdit(product) {
+        if (!product) return;
+        document.getElementById("manage-product-id").value = product.id;
+        document.getElementById("manage-product-name").value = product.name || "";
+        document.getElementById("manage-product-category").value = product.category || "";
+        document.getElementById("manage-product-price").value = product.price == null ? "" : product.price;
+        document.getElementById("manage-product-regular-price").value = product.regular_price == null ? "" : product.regular_price;
+        document.getElementById("manage-product-color").value = product.color || "";
+        document.getElementById("manage-product-url").value = product.product_url || "";
+        document.getElementById("manage-product-description").value = product.description || "";
+        document.getElementById("save-product-button").textContent = "Update Product";
+        const form = document.getElementById("catalog-management-form");
+        const editState = document.getElementById("catalog-edit-state");
+        form.classList.add("editing");
+        editState.textContent = 'Editing product: ' + (product.name || "Untitled product");
+        editState.classList.add("visible");
+        form.scrollIntoView({ behavior: "smooth", block: "start" });
+        document.getElementById("manage-product-name").focus();
+      }
+
+      function beginManagedFaqEdit(faq) {
+        if (!faq) return;
+        document.getElementById("manage-faq-id").value = faq.id;
+        document.getElementById("manage-faq-question").value = faq.question || "";
+        document.getElementById("manage-faq-answer").value = faq.answer || "";
+        document.getElementById("save-faq-button").textContent = "Update FAQ";
+        const form = document.getElementById("faq-management-form");
+        const editState = document.getElementById("faq-edit-state");
+        form.classList.add("editing");
+        editState.textContent = 'Editing FAQ: ' + (faq.question || "Untitled FAQ");
+        editState.classList.add("visible");
+        form.scrollIntoView({ behavior: "smooth", block: "start" });
+        document.getElementById("manage-faq-question").focus();
       }
 
       function syncSettingsFields(tenant) {
@@ -2319,16 +2385,7 @@ function buildClientPortalHtml() {
         document.querySelectorAll("[data-edit-product]").forEach((button) => {
           button.addEventListener("click", function () {
             const product = state.catalog.products.find((item) => item.id === button.dataset.editProduct);
-            if (!product) return;
-            document.getElementById("manage-product-id").value = product.id;
-            document.getElementById("manage-product-name").value = product.name || "";
-            document.getElementById("manage-product-category").value = product.category || "";
-            document.getElementById("manage-product-price").value = product.price == null ? "" : product.price;
-            document.getElementById("manage-product-regular-price").value = product.regular_price == null ? "" : product.regular_price;
-            document.getElementById("manage-product-color").value = product.color || "";
-            document.getElementById("manage-product-url").value = product.product_url || "";
-            document.getElementById("manage-product-description").value = product.description || "";
-            document.getElementById("save-product-button").textContent = "Update Product";
+            beginManagedProductEdit(product);
           });
         });
 
@@ -2360,11 +2417,7 @@ function buildClientPortalHtml() {
         document.querySelectorAll("[data-edit-faq]").forEach((button) => {
           button.addEventListener("click", function () {
             const faq = state.catalog.faqs.find((item) => item.id === button.dataset.editFaq);
-            if (!faq) return;
-            document.getElementById("manage-faq-id").value = faq.id;
-            document.getElementById("manage-faq-question").value = faq.question || "";
-            document.getElementById("manage-faq-answer").value = faq.answer || "";
-            document.getElementById("save-faq-button").textContent = "Update FAQ";
+            beginManagedFaqEdit(faq);
           });
         });
 
