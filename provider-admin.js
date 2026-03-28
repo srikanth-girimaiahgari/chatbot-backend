@@ -411,6 +411,29 @@ function createProviderAdminRouter({ supabase }) {
     }
   });
 
+  router.post("/tenants/:tenantId/confirm-connection", async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+      const { data, error } = await supabase
+        .from("tenants")
+        .update({
+          admin_connection_confirmed: true,
+          activation_status: "awaiting_client_confirmation"
+        })
+        .eq("id", tenantId)
+        .select("id,business_name,admin_connection_confirmed,client_connection_confirmed,activation_status")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ tenant: data, confirmed: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.get("/handoffs", async (req, res) => {
     try {
       let query = supabase
