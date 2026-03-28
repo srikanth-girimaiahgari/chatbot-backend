@@ -392,28 +392,54 @@ function buildClientPortalHtml() {
       padding: 28px;
     }
     .auth-card {
-      width: min(960px, 100%);
+      width: min(1160px, 100%);
       display: grid;
-      grid-template-columns: 1.05fr 1fr;
-      gap: 0;
-      background: rgba(255,255,255,0.88);
+      grid-template-columns: 190px minmax(0, 1fr) 110px;
+      gap: 18px;
+      background: rgba(255,255,255,0.74);
       border: 1px solid rgba(125, 105, 213, 0.14);
-      border-radius: 28px;
-      overflow: hidden;
+      border-radius: 34px;
+      padding: 22px;
       box-shadow: 0 28px 70px rgba(54, 41, 101, 0.14);
       backdrop-filter: blur(16px);
     }
     .auth-intro {
-      padding: 34px;
-      background: linear-gradient(180deg, #7666bf 0%, #9088b5 100%);
+      padding: 28px 14px 28px 20px;
+      background: linear-gradient(180deg, #786ac4 0%, #988ebf 100%);
+      border-radius: 26px;
       color: white;
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: 14px;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .auth-intro .brand {
+      width: 92px;
+      height: 92px;
+      flex: 0 0 auto;
+    }
+    .auth-vertical {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 38px;
+      line-height: 0.92;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      color: rgba(255,255,255,0.98);
+    }
+    .auth-vertical span {
+      display: block;
+    }
+    .auth-intro-copy {
+      display: grid;
+      gap: 10px;
     }
     .auth-intro h1 {
       margin: 0;
-      font-size: 38px;
+      font-size: 28px;
       line-height: 1.02;
       letter-spacing: -0.04em;
     }
@@ -425,7 +451,7 @@ function buildClientPortalHtml() {
     .auth-points {
       display: grid;
       gap: 10px;
-      margin-top: auto;
+      margin-top: 10px;
     }
     .auth-points div {
       padding: 12px 14px;
@@ -433,8 +459,63 @@ function buildClientPortalHtml() {
       background: rgba(255,255,255,0.12);
       border: 1px solid rgba(255,255,255,0.14);
     }
+    .auth-stage {
+      display: grid;
+      place-items: center;
+      padding: 10px 0;
+    }
+    .auth-stage-card {
+      width: min(640px, 100%);
+      background: rgba(255,255,255,0.96);
+      border-radius: 30px;
+      border: 1px solid #ece5fa;
+      box-shadow: 0 24px 58px rgba(53, 40, 95, 0.1);
+      padding: 28px;
+      display: grid;
+      gap: 18px;
+    }
+    .auth-stage-head {
+      display: grid;
+      justify-items: center;
+      text-align: center;
+      gap: 10px;
+    }
+    .auth-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: linear-gradient(145deg, #f8f4ff 0%, #ede7fd 100%);
+      color: #4c4269;
+      font-weight: 800;
+      box-shadow: inset 0 0 0 1px #e3daf9;
+    }
+    .auth-mark-badge {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(145deg, #ffffff 0%, #e9defd 100%);
+      color: #4c4269;
+      font-size: 20px;
+      letter-spacing: -0.08em;
+    }
+    .auth-stage-head h2 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.02;
+      letter-spacing: -0.05em;
+      color: #2f2942;
+    }
+    .auth-stage-head p {
+      margin: 0;
+      max-width: 520px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
     .auth-forms {
-      padding: 30px;
       display: grid;
       gap: 16px;
       align-content: start;
@@ -472,6 +553,35 @@ function buildClientPortalHtml() {
     }
     .auth-panel.visible {
       display: grid;
+    }
+    .auth-right {
+      border-radius: 26px;
+      background: linear-gradient(180deg, #f5f0ff 0%, #efebf8 100%);
+      border: 1px solid #ebe2fb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 12px;
+    }
+    .auth-right-stack {
+      display: grid;
+      gap: 14px;
+      justify-items: center;
+      color: #594f77;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      font-size: 42px;
+      line-height: 1;
+    }
+    .auth-right-stack span {
+      display: grid;
+      place-items: center;
+      width: 58px;
+      height: 58px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.86);
+      border: 1px solid #e7ddfb;
+      box-shadow: 0 12px 28px rgba(89, 79, 119, 0.08);
     }
     .field-grid {
       display: grid;
@@ -538,10 +648,47 @@ function buildClientPortalHtml() {
     }
     .confirmation-card {
       border-radius: 18px;
-      padding: 16px 18px;
-      background: linear-gradient(180deg, #fffaf0 0%, #fff6e8 100%);
-      border: 1px solid #f3dfb3;
+      padding: 18px 20px;
+      background: linear-gradient(180deg, #fff9ef 0%, #fff2d8 100%);
+      border: 1px solid #efcf82;
       color: #6a4d15;
+      box-shadow: 0 18px 40px rgba(182, 133, 32, 0.14);
+      display: grid;
+      gap: 12px;
+    }
+    .confirmation-card h4 {
+      margin: 0;
+      font-size: 20px;
+      color: #5f430f;
+    }
+    .confirmation-card p {
+      margin: 0;
+      line-height: 1.6;
+    }
+    .confirmation-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .confirmation-meta .meta-box {
+      border-radius: 14px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid rgba(202, 161, 62, 0.22);
+      padding: 12px;
+      display: grid;
+      gap: 6px;
+    }
+    .confirmation-meta .label {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #87631d;
+    }
+    .confirmation-meta .value {
+      font-size: 14px;
+      font-weight: 700;
+      color: #5f430f;
     }
     .auth-message {
       display: none;
@@ -1040,6 +1187,15 @@ function buildClientPortalHtml() {
       .auth-card, .onboarding-hero, .onboarding-grid {
         grid-template-columns: 1fr;
       }
+      .auth-intro {
+        align-items: stretch;
+      }
+      .auth-vertical {
+        display: none;
+      }
+      .auth-right {
+        display: none;
+      }
       .layout { grid-template-columns: 1fr; }
       .section-grid { grid-template-columns: 1fr; }
       .field-grid { grid-template-columns: 1fr; }
@@ -1050,75 +1206,103 @@ function buildClientPortalHtml() {
   <section id="auth-shell" class="auth-shell">
     <div class="auth-card">
       <div class="auth-intro">
-        <div class="brand">DM</div>
-        <div class="eyebrow">DigiMaya Client Setup</div>
-        <h1>Bring clarity to every business DM.</h1>
-        <p>Set up DigiMaya once, connect your business details, and give your customers a faster, more consistent buying experience.</p>
-        <div class="auth-points">
-          <div>Create your secure business account in a few minutes.</div>
-          <div>Add your catalog, FAQs, and response preferences in one guided flow.</div>
-          <div>DigiMaya follows your business hours and sets clear follow-up expectations when your team is offline.</div>
+        <div>
+          <div class="brand">DM</div>
+          <div class="auth-vertical">
+            <span>Digi</span>
+            <span>Maya</span>
+          </div>
+        </div>
+        <div class="auth-intro-copy">
+          <div class="eyebrow">DigiMaya Client Setup</div>
+          <h1>Your business DM workspace starts here.</h1>
+          <p>Set up DigiMaya once, connect your business details, and give your customers a faster, more consistent buying experience.</p>
+          <div class="auth-points">
+            <div>Create your secure business account in a few minutes.</div>
+            <div>Add your catalog, FAQs, and response preferences in one guided flow.</div>
+            <div>DigiMaya follows your business hours and sets clear follow-up expectations when your team is offline.</div>
+          </div>
         </div>
       </div>
 
-      <div class="auth-forms">
-        <div class="auth-tabs">
-          <button id="signup-tab" class="active" type="button">Sign Up</button>
-          <button id="login-tab" type="button">Log In</button>
+      <div class="auth-stage">
+        <div class="auth-stage-card">
+          <div class="auth-stage-head">
+            <div class="auth-mark">
+              <span class="auth-mark-badge">DM</span>
+              <span>DigiMaya</span>
+            </div>
+            <h2>Sign up or log in</h2>
+            <p>Open your DigiMaya workspace to manage setup, products, FAQs, conversations, and leads in one place.</p>
+          </div>
+          <div class="auth-forms">
+            <div class="auth-tabs">
+              <button id="signup-tab" class="active" type="button">Sign Up</button>
+              <button id="login-tab" type="button">Log In</button>
+            </div>
+            <div class="mini-caption">Everything you need to launch DigiMaya for your business starts here.</div>
+
+            <div id="auth-message" class="auth-message"></div>
+
+            <form id="signup-panel" class="auth-panel visible">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="signup-business-name">Business Name</label>
+                  <input id="signup-business-name" name="business_name" placeholder="Mad4Madams" required />
+                </div>
+                <div class="field">
+                  <label for="signup-owner-name">Owner Name</label>
+                  <input id="signup-owner-name" name="owner_name" placeholder="Priya Sharma" required />
+                </div>
+                <div class="field">
+                  <label for="signup-owner-email">Business Email</label>
+                  <input id="signup-owner-email" type="email" name="owner_email" placeholder="owner@brand.com" required />
+                </div>
+                <div class="field">
+                  <label for="signup-password">Password</label>
+                  <input id="signup-password" type="password" name="password" placeholder="Choose a secure password" required />
+                </div>
+                <div class="field">
+                  <label for="signup-confirm-password">Confirm Password</label>
+                  <input id="signup-confirm-password" type="password" name="confirm_password" placeholder="Re-enter your password" required />
+                </div>
+                <div class="field">
+                  <label for="signup-category">Business Category</label>
+                  <input id="signup-category" name="business_category" placeholder="Jewelry, Sarees, Fashion" />
+                </div>
+                <div class="field">
+                  <label for="signup-timezone">Timezone</label>
+                  <input id="signup-timezone" name="timezone" placeholder="Asia/Kolkata" value="Asia/Kolkata" />
+                </div>
+              </div>
+              <button class="primary-btn" type="submit">Create Your DigiMaya Account</button>
+              <div class="muted-note">Create your secure account to manage your setup, catalog, conversations, and leads in one place.</div>
+            </form>
+
+            <form id="login-panel" class="auth-panel">
+              <div class="field-grid">
+                <div class="field full">
+                  <label for="login-email">Business Email</label>
+                  <input id="login-email" type="email" name="owner_email" placeholder="owner@brand.com" required />
+                </div>
+                <div class="field full">
+                  <label for="login-password">Password</label>
+                  <input id="login-password" type="password" name="password" placeholder="Enter your password" required />
+                </div>
+              </div>
+              <button class="primary-btn" type="submit">Log In to DigiMaya</button>
+              <div class="muted-note">Pick up where you left off and continue your setup, customer conversations, and lead review.</div>
+            </form>
+          </div>
         </div>
-        <div class="mini-caption">Everything you need to launch DigiMaya for your business starts here.</div>
+      </div>
 
-        <div id="auth-message" class="auth-message"></div>
-
-        <form id="signup-panel" class="auth-panel visible">
-          <div class="field-grid">
-            <div class="field">
-              <label for="signup-business-name">Business Name</label>
-              <input id="signup-business-name" name="business_name" placeholder="Mad4Madams" required />
-            </div>
-            <div class="field">
-              <label for="signup-owner-name">Owner Name</label>
-              <input id="signup-owner-name" name="owner_name" placeholder="Priya Sharma" required />
-            </div>
-            <div class="field">
-              <label for="signup-owner-email">Business Email</label>
-              <input id="signup-owner-email" type="email" name="owner_email" placeholder="owner@brand.com" required />
-            </div>
-            <div class="field">
-              <label for="signup-password">Password</label>
-              <input id="signup-password" type="password" name="password" placeholder="Choose a secure password" required />
-            </div>
-            <div class="field">
-              <label for="signup-confirm-password">Confirm Password</label>
-              <input id="signup-confirm-password" type="password" name="confirm_password" placeholder="Re-enter your password" required />
-            </div>
-            <div class="field">
-              <label for="signup-category">Business Category</label>
-              <input id="signup-category" name="business_category" placeholder="Jewelry, Sarees, Fashion" />
-            </div>
-            <div class="field">
-              <label for="signup-timezone">Timezone</label>
-              <input id="signup-timezone" name="timezone" placeholder="Asia/Kolkata" value="Asia/Kolkata" />
-            </div>
-          </div>
-          <button class="primary-btn" type="submit">Create Your DigiMaya Account</button>
-          <div class="muted-note">Create your secure account to manage your setup, catalog, conversations, and leads in one place.</div>
-        </form>
-
-        <form id="login-panel" class="auth-panel">
-          <div class="field-grid">
-            <div class="field full">
-              <label for="login-email">Business Email</label>
-              <input id="login-email" type="email" name="owner_email" placeholder="owner@brand.com" required />
-            </div>
-            <div class="field full">
-              <label for="login-password">Password</label>
-              <input id="login-password" type="password" name="password" placeholder="Enter your password" required />
-            </div>
-          </div>
-          <button class="primary-btn" type="submit">Log In to DigiMaya</button>
-          <div class="muted-note">Pick up where you left off and continue your setup, customer conversations, and lead review.</div>
-        </form>
+      <div class="auth-right">
+        <div class="auth-right-stack">
+          <span>#</span>
+          <span>D</span>
+          <span>M</span>
+        </div>
       </div>
     </div>
   </section>
@@ -1160,9 +1344,24 @@ function buildClientPortalHtml() {
             <strong>Built for a hassle-free launch:</strong> start with the essentials first. You can always improve your catalog, FAQs, and channel connections after the first version is live.
           </div>
           <div id="client-confirmation-card" class="confirmation-card" style="display:none;">
-            <strong>Final confirmation needed.</strong>
-            <p style="margin-top:8px;">DigiMaya has finished the Instagram connection on the admin side. Review your setup and confirm to activate your workspace.</p>
-            <div class="inline-actions" style="margin-top:12px;">
+            <div class="eyebrow" style="color:#87631d;">Activation Required</div>
+            <h4>Admin approval is complete. Your final confirmation is now needed.</h4>
+            <p>DigiMaya has already been connected and approved on the admin side. Confirm from your side to activate your workspace and start live handling for your business.</p>
+            <div class="confirmation-meta">
+              <div class="meta-box">
+                <div class="label">Admin Status</div>
+                <div class="value">Confirmed</div>
+              </div>
+              <div class="meta-box">
+                <div class="label">Client Status</div>
+                <div class="value">Waiting for your confirmation</div>
+              </div>
+              <div class="meta-box">
+                <div class="label">Activation</div>
+                <div class="value">Pending final approval</div>
+              </div>
+            </div>
+            <div class="inline-actions">
               <button id="client-confirm-connection" class="primary-btn" type="button">Confirm Connection</button>
             </div>
           </div>
@@ -1933,9 +2132,7 @@ function buildClientPortalHtml() {
       function renderOnboarding() {
         const tenant = state.session.tenant;
         const onboarding = state.session.onboarding;
-        document.getElementById("onboarding-business-name").textContent = tenant.business_name || "Finish your onboarding";
-        document.getElementById("current-off-hours-copy").textContent = tenant.off_hours_reply || "DigiMaya will collect the lead and promise a follow-up when your team is available.";
-        document.getElementById("current-onboarding-status").textContent =
+        const statusText =
           tenant.activation_status === "active"
             ? "Active"
             : onboarding.ready_for_client_confirmation
@@ -1943,6 +2140,10 @@ function buildClientPortalHtml() {
               : onboarding.launch_ready
                 ? "Launch ready"
                 : "Setup in progress";
+
+        document.getElementById("onboarding-business-name").textContent = tenant.business_name || "Finish your onboarding";
+        document.getElementById("current-off-hours-copy").textContent = tenant.off_hours_reply || "DigiMaya will collect the lead and promise a follow-up when your team is available.";
+        document.getElementById("current-onboarding-status").textContent = statusText;
 
         document.getElementById("profile-business-name").value = tenant.business_name || "";
         document.getElementById("profile-owner-name").value = tenant.owner_name || "";
@@ -1978,8 +2179,8 @@ function buildClientPortalHtml() {
           return '<div class="item"><span>' + item[0] + '</span><span class="badge">' + (item[1] ? "Done" : "Pending") + '</span></div>';
         }).join("");
 
-        document.getElementById("client-confirmation-card").style.display =
-          onboarding.ready_for_client_confirmation ? "block" : "none";
+        const confirmationCard = document.getElementById("client-confirmation-card");
+        confirmationCard.style.display = onboarding.ready_for_client_confirmation ? "grid" : "none";
       }
 
       function shouldShowOnboarding() {
