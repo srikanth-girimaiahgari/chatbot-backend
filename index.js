@@ -45,17 +45,17 @@ function buildConversationHistory(recentChats, latestMessage) {
   return history;
 }
 
-function getDirectProductReply(products, latestMessage) {
+function getDirectProductReply(products, latestMessage, tenant) {
   const matches = findMatchingProducts(products, latestMessage);
   if (matches.length !== 1) {
     return null;
   }
 
-  return buildProductResponse(matches[0], latestMessage);
+  return buildProductResponse(matches[0], latestMessage, tenant);
 }
 
-function getDirectBudgetReply(products, latestMessage) {
-  return buildBudgetRecommendationResponse(products, latestMessage);
+function getDirectBudgetReply(products, latestMessage, tenant) {
+  return buildBudgetRecommendationResponse(products, latestMessage, tenant);
 }
 
 function parseTimeParts(value) {
@@ -222,7 +222,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
 
     const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
     const { data: faqs }     = await supabase.from("faqs").select("*").eq("tenant_id", tenant.id);
-    const directReply = getDirectProductReply(products, messageText) || getDirectBudgetReply(products, messageText);
+    const directReply = getDirectProductReply(products, messageText, tenant) || getDirectBudgetReply(products, messageText, tenant);
     if (directReply) {
       await supabase.from("chat_messages").insert({
         session_id: senderId,
@@ -237,6 +237,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
     const systemPrompt = buildMayaSystemPrompt({
       products,
       faqs,
+      tenant,
       contextLabel: "Instagram DM",
       recentChats: recentChats || [],
       latestMessage: messageText
@@ -352,7 +353,7 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
     const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
     const { data: faqs }     = await supabase.from("faqs").select("*").eq("tenant_id", tenant.id);
 
-    const directReply = getDirectProductReply(products, messageText) || getDirectBudgetReply(products, messageText);
+    const directReply = getDirectProductReply(products, messageText, tenant) || getDirectBudgetReply(products, messageText, tenant);
     if (directReply) {
       await supabase.from("chat_messages").insert({
         session_id: sessionId,
@@ -367,6 +368,7 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
     const systemPrompt = buildMayaSystemPrompt({
       products,
       faqs,
+      tenant,
       contextLabel: "WhatsApp",
       recentChats: recentChats || [],
       latestMessage: messageText

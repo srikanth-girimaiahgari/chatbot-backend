@@ -144,6 +144,40 @@ function safeText(value) {
   return String(value || "").trim();
 }
 
+function normalizeCurrencyCode(value) {
+  const code = String(value || "").trim().toUpperCase();
+  const supported = new Set(["INR", "USD", "GBP", "AUD", "EUR", "CAD"]);
+  return supported.has(code) ? code : "INR";
+}
+
+function getCurrencyConfig(code) {
+  const normalized = normalizeCurrencyCode(code);
+  const map = {
+    INR: { code: "INR", symbol: "₹", locale: "en-IN" },
+    USD: { code: "USD", symbol: "$", locale: "en-US" },
+    GBP: { code: "GBP", symbol: "£", locale: "en-GB" },
+    AUD: { code: "AUD", symbol: "A$", locale: "en-AU" },
+    EUR: { code: "EUR", symbol: "€", locale: "en-IE" },
+    CAD: { code: "CAD", symbol: "C$", locale: "en-CA" }
+  };
+  return map[normalized] || map.INR;
+}
+
+function formatTenantMoney(amount, currencyCode) {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+
+  const currency = getCurrencyConfig(currencyCode);
+  const formatted = value.toLocaleString(currency.locale, {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2
+  });
+
+  return `${currency.symbol}${formatted}`;
+}
+
 function buildDefaultOffHoursReply(tenant) {
   return tenant.off_hours_reply || "Our team is currently offline, but DigiMaya has noted your message and we’ll get back to you as soon as we’re available.";
 }
@@ -288,6 +322,7 @@ async function createTenantAccount(supabase, payload) {
     plan: "starter",
     active: true,
     timezone: safeText(payload.timezone) || "Asia/Kolkata",
+    currency_code: normalizeCurrencyCode(payload.currency_code),
     business_category: safeText(payload.business_category),
     onboarding_status: "profile_pending",
     preferred_contact_method: "email",
@@ -1331,6 +1366,17 @@ function buildClientPortalHtml() {
                   <label for="signup-timezone">Timezone</label>
                   <input id="signup-timezone" name="timezone" placeholder="Asia/Kolkata" value="Asia/Kolkata" />
                 </div>
+                <div class="field">
+                  <label for="signup-currency">Selling Currency</label>
+                  <select id="signup-currency" name="currency_code">
+                    <option value="INR">INR (₹)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="AUD">AUD (A$)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="CAD">CAD (C$)</option>
+                  </select>
+                </div>
               </div>
               <button class="primary-btn" type="submit">Create Your DigiMaya Account</button>
               <div class="muted-note">Create your secure account to manage your setup, catalog, conversations, and leads in one place.</div>
@@ -1450,6 +1496,17 @@ function buildClientPortalHtml() {
             <div class="field">
               <label for="profile-timezone">Timezone</label>
               <input id="profile-timezone" name="timezone" placeholder="Asia/Kolkata" />
+            </div>
+            <div class="field">
+              <label for="profile-currency">Selling Currency</label>
+              <select id="profile-currency" name="currency_code">
+                <option value="INR">INR (₹)</option>
+                <option value="USD">USD ($)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="AUD">AUD (A$)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="CAD">CAD (C$)</option>
+              </select>
             </div>
             <div class="field">
               <label for="profile-category">Business Category</label>
@@ -1774,6 +1831,17 @@ function buildClientPortalHtml() {
                 <div class="field">
                   <label for="settings-timezone">Timezone</label>
                   <input id="settings-timezone" name="timezone" />
+                </div>
+                <div class="field">
+                  <label for="settings-currency">Selling Currency</label>
+                  <select id="settings-currency" name="currency_code">
+                    <option value="INR">INR (₹)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="AUD">AUD (A$)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="CAD">CAD (C$)</option>
+                  </select>
                 </div>
                 <div class="field">
                   <label for="settings-category">Business Category</label>
@@ -2163,6 +2231,7 @@ function buildClientPortalHtml() {
         document.getElementById("settings-owner-name").value = tenant.owner_name || "";
         document.getElementById("settings-owner-email").value = tenant.owner_email || "";
         document.getElementById("settings-timezone").value = tenant.timezone || "Asia/Kolkata";
+        document.getElementById("settings-currency").value = normalizeCurrencyCode(tenant.currency_code);
         document.getElementById("settings-category").value = tenant.business_category || "";
         document.getElementById("settings-instagram").value = tenant.instagram_username || "";
         document.getElementById("settings-facebook-page").value = tenant.facebook_page_name || "";
@@ -2184,6 +2253,7 @@ function buildClientPortalHtml() {
             summaryItem("Owner Name", tenant.owner_name || "Not added yet") +
             summaryItem("Login Email", tenant.owner_email || "Not added yet") +
             summaryItem("Timezone", tenant.timezone || "Not added yet") +
+            summaryItem("Selling Currency", normalizeCurrencyCode(tenant.currency_code)) +
             summaryItem("Business Category", tenant.business_category || "Not added yet") +
             summaryItem("Instagram Username", tenant.instagram_username || "Not added yet") +
             summaryItem("Facebook Page", tenant.facebook_page_name || "Not added yet") +
@@ -2254,6 +2324,7 @@ function buildClientPortalHtml() {
         document.getElementById("profile-owner-name").value = tenant.owner_name || "";
         document.getElementById("profile-owner-email").value = tenant.owner_email || "";
         document.getElementById("profile-timezone").value = tenant.timezone || "Asia/Kolkata";
+        document.getElementById("profile-currency").value = normalizeCurrencyCode(tenant.currency_code);
         document.getElementById("profile-category").value = tenant.business_category || "";
         document.getElementById("profile-instagram").value = tenant.instagram_username || "";
         document.getElementById("profile-facebook-page").value = tenant.facebook_page_name || "";
@@ -2375,7 +2446,7 @@ function buildClientPortalHtml() {
           [
             { label: "Product", render: (row) => row.name || "—" },
             { label: "Category", render: (row) => row.category || "—" },
-            { label: "Price", render: (row) => row.price == null ? "—" : row.price },
+            { label: "Price", render: (row) => formatTenantMoney(row.price, state.overview?.tenant?.currency_code) },
             { label: "Color", render: (row) => row.color || "—" },
             { label: "Actions", render: (row) => '<div class="action-row"><button class="small-btn" type="button" data-edit-product="' + row.id + '">Edit</button><button class="small-btn danger" type="button" data-delete-product="' + row.id + '">Delete</button></div>' }
           ],
@@ -2956,6 +3027,7 @@ function createClientPortalRouter({ supabase, resend }) {
         owner_name: safeText(req.body.owner_name) || req.tenant.owner_name,
         owner_email: normalizeEmail(req.body.owner_email) || req.tenant.owner_email,
         timezone: safeText(req.body.timezone) || req.tenant.timezone || "Asia/Kolkata",
+        currency_code: normalizeCurrencyCode(req.body.currency_code || req.tenant.currency_code),
         business_category: safeText(req.body.business_category) || req.tenant.business_category,
         instagram_username: safeText(req.body.instagram_username) || req.tenant.instagram_username,
         facebook_page_name: safeText(req.body.facebook_page_name) || req.tenant.facebook_page_name,

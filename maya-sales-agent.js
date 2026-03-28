@@ -2,15 +2,39 @@ function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function getCatalogCurrency(products = []) {
+function normalizeCurrencyCode(value) {
+  const code = String(value || "").trim().toUpperCase();
+  const supported = new Set(["INR", "USD", "GBP", "AUD", "EUR", "CAD"]);
+  return supported.has(code) ? code : "";
+}
+
+function getCurrencyConfig(code) {
+  const normalized = normalizeCurrencyCode(code);
+  const map = {
+    INR: { code: "INR", symbol: "₹", locale: "en-IN" },
+    USD: { code: "USD", symbol: "$", locale: "en-US" },
+    GBP: { code: "GBP", symbol: "£", locale: "en-GB" },
+    AUD: { code: "AUD", symbol: "A$", locale: "en-AU" },
+    EUR: { code: "EUR", symbol: "€", locale: "en-IE" },
+    CAD: { code: "CAD", symbol: "C$", locale: "en-CA" }
+  };
+  return map[normalized] || null;
+}
+
+function getCatalogCurrency(products = [], tenant = {}) {
+  const tenantCurrency = getCurrencyConfig(tenant.currency_code);
+  if (tenantCurrency) {
+    return tenantCurrency;
+  }
+
   const numericPrices = (products || [])
     .map((product) => Number(product.price))
     .filter((price) => Number.isFinite(price) && price > 0);
 
   if (numericPrices.length === 0) {
-    return {
+      return {
       code: "INR",
-      symbol: "Rs.",
+      symbol: "₹",
       locale: "en-IN"
     };
   }
@@ -26,7 +50,7 @@ function getCatalogCurrency(products = []) {
 
   return {
     code: "INR",
-    symbol: "Rs.",
+    symbol: "₹",
     locale: "en-IN"
   };
 }
@@ -92,9 +116,9 @@ function formatBudgetBand(band, currency) {
   return `${formatMoney(band.min, currency)} - ${formatMoney(band.max, currency)}`;
 }
 
-function detectBudget(text, products = []) {
+function detectBudget(text, products = [], tenant = {}) {
   const value = normalizeText(text);
-  const currency = getCatalogCurrency(products);
+  const currency = getCatalogCurrency(products, tenant);
   const numberMatches = (value.match(/\d[\d,]*/g) || []).map((item) => Number(item.replace(/,/g, ""))).filter(Number.isFinite);
 
   if (!value) {
@@ -116,9 +140,9 @@ function detectBudget(text, products = []) {
   return null;
 }
 
-function parseBudgetFromText(text, products = []) {
+function parseBudgetFromText(text, products = [], tenant = {}) {
   const value = normalizeText(text);
-  const currency = getCatalogCurrency(products);
+  const currency = getCatalogCurrency(products, tenant);
 
   if (!value) {
     return null;
@@ -206,8 +230,8 @@ function detectStage(messages, latestMessage, products = []) {
   return "new_lead";
 }
 
-function buildProductHighlights(products) {
-  const currency = getCatalogCurrency(products);
+function buildProductHighlights(products, tenant = {}) {
+  const currency = getCatalogCurrency(products, tenant);
   return (products || []).slice(0, 25).map((product) => {
     const sizes = product.sizes_in_stock && product.sizes_in_stock.length > 0
       ? `Sizes: ${product.sizes_in_stock.join(", ")}`
@@ -247,9 +271,9 @@ function findMatchingProducts(products, latestMessage) {
   });
 }
 
-function buildProductResponse(product, latestMessage) {
+function buildProductResponse(product, latestMessage, tenant = {}) {
   const message = normalizeText(latestMessage);
-  const currency = getCatalogCurrency([product]);
+  const currency = getCatalogCurrency([product], tenant);
   const sizes = product.sizes_in_stock && product.sizes_in_stock.length > 0
     ? product.sizes_in_stock.join(", ")
     : null;
@@ -289,9 +313,9 @@ function pickReason(product, latestMessage) {
   return `${name} is a good match in this budget.`;
 }
 
-function buildBudgetRecommendationResponse(products, latestMessage) {
-  const currency = getCatalogCurrency(products);
-  const budget = parseBudgetFromText(latestMessage, products);
+function buildBudgetRecommendationResponse(products, latestMessage, tenant = {}) {
+  const currency = getCatalogCurrency(products, tenant);
+  const budget = parseBudgetFromText(latestMessage, products, tenant);
   if (!budget) {
     return null;
   }
@@ -324,13 +348,13 @@ function buildBudgetRecommendationResponse(products, latestMessage) {
   return `Here are ${matches.length} options in ${budget.label}:\n\n${lines.join("\n")}\n\nIf you want, I can narrow these by minimalist, trendy, or premium style too.`;
 }
 
-function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, latestMessage }) {
-  const currency = getCatalogCurrency(products);
+function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, latestMessage, tenant }) {
+  const currency = getCatalogCurrency(products, tenant);
   const budgetBands = buildBudgetBands(products);
   const budgetPrompt = budgetBands.length > 0
     ? budgetBands.map((band) => formatBudgetBand(band, currency)).join(", ")
     : null;
-  const inferredBudget = recentChats.map((chat) => detectBudget(chat.content, products)).find(Boolean) || detectBudget(latestMessage, products);
+  const inferredBudget = recentChats.map((chat) => detectBudget(chat.content, products, tenant)).find(Boolean) || detectBudget(latestMessage, products, tenant);
   const inferredStyle = recentChats.map((chat) => detectStyle(chat.content)).find(Boolean) || detectStyle(latestMessage);
   const inferredUseCase = recentChats.map((chat) => detectUseCase(chat.content)).find(Boolean) || detectUseCase(latestMessage);
   const inferredStage = detectStage(recentChats, latestMessage, products);
@@ -370,7 +394,7 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
     "BUSINESS INFO:",
     "Answer from the tenant's actual catalog and FAQs rather than reusing assumptions from another brand.",
     "PRODUCTS:",
-    buildProductHighlights(products),
+    buildProductHighlights(products, tenant),
     "FAQS:",
     buildFaqText(faqs)
   ].join("\n\n");
