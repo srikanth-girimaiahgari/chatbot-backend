@@ -429,9 +429,7 @@ function buildClientPortalHtml() {
       display: block;
     }
     .auth-intro-copy {
-      display: grid;
-      gap: 10px;
-      text-align: center;
+      display: none;
     }
     .auth-intro h1 {
       margin: 0;
@@ -469,6 +467,12 @@ function buildClientPortalHtml() {
       padding: 28px;
       display: grid;
       gap: 18px;
+    }
+    .auth-entry {
+      display: grid;
+      justify-items: center;
+      text-align: center;
+      gap: 16px;
     }
     .auth-stage-head {
       display: grid;
@@ -510,6 +514,34 @@ function buildClientPortalHtml() {
       max-width: 520px;
       color: var(--muted);
       line-height: 1.65;
+    }
+    .auth-entry-actions {
+      display: inline-flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .auth-form-shell {
+      display: none;
+      gap: 16px;
+    }
+    .auth-form-shell.visible {
+      display: grid;
+    }
+    .auth-form-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .ghost-btn {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+      cursor: pointer;
+      padding: 8px 0;
     }
     .auth-forms {
       display: grid;
@@ -1212,38 +1244,36 @@ function buildClientPortalHtml() {
           <span>y</span>
           <span>a</span>
         </div>
-        <div class="auth-intro-copy">
-          <div class="eyebrow">DigiMaya Client Setup</div>
-          <h1>Your business DM workspace starts here.</h1>
-          <p>Set up DigiMaya once, connect your business details, and give your customers a faster, more consistent buying experience.</p>
-          <div class="auth-points">
-            <div>Create your secure business account in a few minutes.</div>
-            <div>Add your catalog, FAQs, and response preferences in one guided flow.</div>
-            <div>DigiMaya follows your business hours and sets clear follow-up expectations when your team is offline.</div>
-          </div>
-        </div>
       </div>
 
       <div class="auth-stage">
         <div class="auth-stage-card">
-          <div class="auth-stage-head">
-            <div class="auth-mark">
-              <span class="auth-mark-badge">DM</span>
-              <span>DigiMaya</span>
+          <div id="auth-entry" class="auth-entry">
+            <div class="auth-stage-head">
+              <div class="auth-mark">
+                <span class="auth-mark-badge">DM</span>
+                <span>DigiMaya</span>
+              </div>
+              <h2>Our DigiMaya</h2>
+              <p>Open your DigiMaya workspace to manage setup, products, FAQs, conversations, and leads in one place.</p>
             </div>
-            <h2>Our DigiMaya</h2>
-            <p>Open your DigiMaya workspace to manage setup, products, FAQs, conversations, and leads in one place.</p>
-          </div>
-          <div class="auth-forms">
-            <div class="auth-tabs">
-              <button id="signup-tab" class="active" type="button">Sign Up</button>
-              <button id="login-tab" type="button">Log In</button>
+            <div class="auth-entry-actions">
+              <button id="open-signup" class="primary-btn" type="button">Sign Up</button>
+              <button id="open-login" class="secondary-btn" type="button">Log In</button>
             </div>
             <div class="mini-caption">Everything you need to launch DigiMaya for your business starts here.</div>
-
+          </div>
+          <div id="auth-form-shell" class="auth-form-shell">
+            <div class="auth-form-topbar">
+              <div class="auth-tabs">
+                <button id="signup-tab" class="active" type="button">Sign Up</button>
+                <button id="login-tab" type="button">Log In</button>
+              </div>
+              <button id="auth-back" class="ghost-btn" type="button">Back</button>
+            </div>
             <div id="auth-message" class="auth-message"></div>
 
-            <form id="signup-panel" class="auth-panel visible">
+            <form id="signup-panel" class="auth-panel">
               <div class="field-grid">
                 <div class="field">
                   <label for="signup-business-name">Business Name</label>
@@ -2395,10 +2425,22 @@ function buildClientPortalHtml() {
       }
 
       function openTab(name) {
+        document.getElementById("auth-entry").style.display = "none";
+        document.getElementById("auth-form-shell").classList.add("visible");
         document.getElementById("signup-tab").classList.toggle("active", name === "signup");
         document.getElementById("login-tab").classList.toggle("active", name === "login");
         document.getElementById("signup-panel").classList.toggle("visible", name === "signup");
         document.getElementById("login-panel").classList.toggle("visible", name === "login");
+        setAuthMessage("");
+      }
+
+      function showAuthEntry() {
+        document.getElementById("auth-entry").style.display = "grid";
+        document.getElementById("auth-form-shell").classList.remove("visible");
+        document.getElementById("signup-panel").classList.remove("visible");
+        document.getElementById("login-panel").classList.remove("visible");
+        document.getElementById("signup-tab").classList.remove("active");
+        document.getElementById("login-tab").classList.remove("active");
         setAuthMessage("");
       }
 
@@ -2426,6 +2468,18 @@ function buildClientPortalHtml() {
 
       document.getElementById("login-tab").addEventListener("click", function () {
         openTab("login");
+      });
+
+      document.getElementById("open-signup").addEventListener("click", function () {
+        openTab("signup");
+      });
+
+      document.getElementById("open-login").addEventListener("click", function () {
+        openTab("login");
+      });
+
+      document.getElementById("auth-back").addEventListener("click", function () {
+        showAuthEntry();
       });
 
       document.getElementById("signup-panel").addEventListener("submit", async function (event) {
@@ -2470,6 +2524,7 @@ function buildClientPortalHtml() {
         state.session = null;
         state.catalog = { products: [], faqs: [] };
         showShell("auth");
+        showAuthEntry();
         setAuthMessage("You have been logged out.", "success");
       });
 
