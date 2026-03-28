@@ -230,6 +230,25 @@ code {
   cursor: pointer;
 }
 
+.button-primary:disabled,
+.button-secondary:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.refresh-status {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .error-banner {
   margin-bottom: 18px;
   border-radius: 16px;
@@ -397,6 +416,35 @@ code {
 
 .detail-section h4 {
   margin: 0 0 10px;
+}
+
+.detail-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.detail-meta-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fdfbff 0%, #f6f1ff 100%);
+  padding: 14px;
+}
+
+.detail-meta-card .meta-label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.detail-meta-card .meta-value {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  word-break: break-word;
 }
 
 .activation-card {

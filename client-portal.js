@@ -655,6 +655,21 @@ function buildClientPortalHtml() {
       cursor: pointer;
       box-shadow: 0 12px 24px rgba(116, 100, 199, 0.2);
     }
+    .refresh-btn:disabled, .primary-btn:disabled, .secondary-btn:disabled, .small-btn:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .refresh-status {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -730,6 +745,52 @@ function buildClientPortalHtml() {
       border-top: 1px solid var(--line);
       display: grid;
       gap: 12px;
+    }
+    .management-form.hidden,
+    .section-summary.hidden {
+      display: none;
+    }
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .section-summary {
+      margin-top: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .summary-grid-two {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .summary-item {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #fdfbff 0%, #f6f1ff 100%);
+      padding: 14px;
+    }
+    .summary-item .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+    .summary-item .value {
+      margin-top: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .settings-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
     }
     table {
       width: 100%;
@@ -1234,7 +1295,10 @@ function buildClientPortalHtml() {
           <div class="eyebrow">Business Clarity View</div>
           <h2>Your DigiMaya Dashboard</h2>
         </div>
-        <button id="refresh" class="refresh-btn">Refresh</button>
+        <div class="topbar-actions">
+          <div id="refresh-status" class="refresh-status">Workspace ready</div>
+          <button id="refresh" class="refresh-btn">Refresh</button>
+        </div>
       </header>
 
       <div id="error" class="error"></div>
@@ -1348,9 +1412,15 @@ function buildClientPortalHtml() {
       <section class="panel" data-panel="settings">
         <div class="stack">
           <div class="card">
-            <h3>Profile Settings</h3>
-            <div class="muted-note">Update your account, contact details, and business information anytime.</div>
-            <form id="settings-profile-form" class="management-form">
+            <div class="settings-header">
+              <div>
+                <h3>Profile Settings</h3>
+                <div class="muted-note">Review your business and contact details, then update them only when needed.</div>
+              </div>
+              <button id="edit-profile-settings" class="small-btn" type="button">Edit</button>
+            </div>
+            <div id="profile-settings-summary" class="section-summary"></div>
+            <form id="settings-profile-form" class="management-form hidden">
               <div class="field-grid">
                 <div class="field">
                   <label for="settings-business-name">Business Name</label>
@@ -1397,14 +1467,23 @@ function buildClientPortalHtml() {
                   <input id="settings-lead-phone" name="lead_contact_phone" />
                 </div>
               </div>
-              <button class="primary-btn" type="submit">Save Profile Changes</button>
+              <div class="settings-actions">
+                <button id="save-profile-settings" class="primary-btn" type="submit">Save Profile Changes</button>
+                <button id="cancel-profile-settings" class="secondary-btn" type="button">Cancel</button>
+              </div>
             </form>
           </div>
 
           <div class="card">
-            <h3>Availability Settings</h3>
-            <div class="muted-note">Adjust your response window and after-hours message without going through onboarding again.</div>
-            <form id="settings-availability-form" class="management-form">
+            <div class="settings-header">
+              <div>
+                <h3>Availability Settings</h3>
+                <div class="muted-note">Control when your team is available and what DigiMaya says after hours.</div>
+              </div>
+              <button id="edit-availability-settings" class="small-btn" type="button">Edit</button>
+            </div>
+            <div id="availability-settings-summary" class="section-summary"></div>
+            <form id="settings-availability-form" class="management-form hidden">
               <div class="field-grid">
                 <div class="field">
                   <label for="settings-hours-start">Start Time</label>
@@ -1419,7 +1498,10 @@ function buildClientPortalHtml() {
                   <textarea id="settings-hours-reply" name="off_hours_reply"></textarea>
                 </div>
               </div>
-              <button class="primary-btn" type="submit">Save Availability Changes</button>
+              <div class="settings-actions">
+                <button id="save-availability-settings" class="primary-btn" type="submit">Save Availability Changes</button>
+                <button id="cancel-availability-settings" class="secondary-btn" type="button">Cancel</button>
+              </div>
             </form>
           </div>
         </div>
@@ -1446,6 +1528,10 @@ function buildClientPortalHtml() {
         conversations: [],
         leads: [],
         performance: null,
+        settingsEditing: {
+          profile: false,
+          availability: false
+        },
         catalog: {
           products: [],
           faqs: []
@@ -1502,6 +1588,17 @@ function buildClientPortalHtml() {
         }
         el.classList.add("visible");
         el.textContent = message;
+      }
+
+      function setRefreshState(isLoading, message) {
+        const button = document.getElementById("refresh");
+        const status = document.getElementById("refresh-status");
+
+        button.disabled = isLoading;
+        button.textContent = isLoading ? "Refreshing..." : "Refresh";
+        if (message) {
+          status.textContent = message;
+        }
       }
 
       function fetchJson(path, options) {
@@ -1588,6 +1685,82 @@ function buildClientPortalHtml() {
         document.getElementById("save-faq-button").textContent = "Save FAQ";
       }
 
+      function syncSettingsFields(tenant) {
+        document.getElementById("settings-business-name").value = tenant.business_name || "";
+        document.getElementById("settings-owner-name").value = tenant.owner_name || "";
+        document.getElementById("settings-owner-email").value = tenant.owner_email || "";
+        document.getElementById("settings-timezone").value = tenant.timezone || "Asia/Kolkata";
+        document.getElementById("settings-category").value = tenant.business_category || "";
+        document.getElementById("settings-instagram").value = tenant.instagram_username || "";
+        document.getElementById("settings-facebook-page").value = tenant.facebook_page_name || "";
+        document.getElementById("settings-contact-method").value = tenant.preferred_contact_method || "email";
+        document.getElementById("settings-lead-email").value = tenant.lead_contact_email || "";
+        document.getElementById("settings-lead-phone").value = tenant.lead_contact_phone || "";
+        document.getElementById("settings-hours-start").value = tenant.response_window_start || "";
+        document.getElementById("settings-hours-end").value = tenant.response_window_end || "";
+        document.getElementById("settings-hours-reply").value = tenant.off_hours_reply || "";
+        renderSettingsSummary(tenant);
+        setSettingsEditing("profile", false);
+        setSettingsEditing("availability", false);
+      }
+
+      function renderSettingsSummary(tenant) {
+        document.getElementById("profile-settings-summary").innerHTML =
+          '<div class="summary-grid-two">' +
+            summaryItem("Business Name", tenant.business_name || "Not added yet") +
+            summaryItem("Owner Name", tenant.owner_name || "Not added yet") +
+            summaryItem("Login Email", tenant.owner_email || "Not added yet") +
+            summaryItem("Timezone", tenant.timezone || "Not added yet") +
+            summaryItem("Business Category", tenant.business_category || "Not added yet") +
+            summaryItem("Instagram Username", tenant.instagram_username || "Not added yet") +
+            summaryItem("Facebook Page", tenant.facebook_page_name || "Not added yet") +
+            summaryItem("Preferred Contact", tenant.preferred_contact_method || "Not added yet") +
+            summaryItem("Lead Email", tenant.lead_contact_email || "Not added yet") +
+            summaryItem("Lead Phone", tenant.lead_contact_phone || "Not added yet") +
+          '</div>';
+
+        document.getElementById("availability-settings-summary").innerHTML =
+          '<div class="summary-grid-two">' +
+            summaryItem("Start Time", tenant.response_window_start || "Not set yet") +
+            summaryItem("End Time", tenant.response_window_end || "Not set yet") +
+            summaryItem("After-hours Reply", tenant.off_hours_reply || "Not set yet") +
+          '</div>';
+      }
+
+      function summaryItem(label, value) {
+        return '<div class="summary-item"><div class="label">' + label + '</div><div class="value">' + escapeHtml(String(value || "—")) + '</div></div>';
+      }
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function setSettingsEditing(section, isEditing) {
+        state.settingsEditing[section] = isEditing;
+
+        const isProfile = section === "profile";
+        const form = document.getElementById(isProfile ? "settings-profile-form" : "settings-availability-form");
+        const summary = document.getElementById(isProfile ? "profile-settings-summary" : "availability-settings-summary");
+        const editButton = document.getElementById(isProfile ? "edit-profile-settings" : "edit-availability-settings");
+        const inputSelector = isProfile
+          ? "#settings-profile-form input, #settings-profile-form textarea, #settings-profile-form select"
+          : "#settings-availability-form input, #settings-availability-form textarea, #settings-availability-form select";
+
+        form.classList.toggle("hidden", !isEditing);
+        summary.classList.toggle("hidden", isEditing);
+        editButton.textContent = isEditing ? "Editing" : "Edit";
+        editButton.disabled = isEditing;
+
+        document.querySelectorAll(inputSelector).forEach((field) => {
+          field.disabled = !isEditing;
+        });
+      }
+
       function renderOnboarding() {
         const tenant = state.session.tenant;
         const onboarding = state.session.onboarding;
@@ -1618,19 +1791,7 @@ function buildClientPortalHtml() {
         document.getElementById("hours-start").value = tenant.response_window_start || "";
         document.getElementById("hours-end").value = tenant.response_window_end || "";
         document.getElementById("hours-reply").value = tenant.off_hours_reply || "";
-        document.getElementById("settings-business-name").value = tenant.business_name || "";
-        document.getElementById("settings-owner-name").value = tenant.owner_name || "";
-        document.getElementById("settings-owner-email").value = tenant.owner_email || "";
-        document.getElementById("settings-timezone").value = tenant.timezone || "Asia/Kolkata";
-        document.getElementById("settings-category").value = tenant.business_category || "";
-        document.getElementById("settings-instagram").value = tenant.instagram_username || "";
-        document.getElementById("settings-facebook-page").value = tenant.facebook_page_name || "";
-        document.getElementById("settings-contact-method").value = tenant.preferred_contact_method || "email";
-        document.getElementById("settings-lead-email").value = tenant.lead_contact_email || "";
-        document.getElementById("settings-lead-phone").value = tenant.lead_contact_phone || "";
-        document.getElementById("settings-hours-start").value = tenant.response_window_start || "";
-        document.getElementById("settings-hours-end").value = tenant.response_window_end || "";
-        document.getElementById("settings-hours-reply").value = tenant.off_hours_reply || "";
+        syncSettingsFields(tenant);
 
         const checklist = [
           ["Business profile", onboarding.profile_completed],
@@ -1665,6 +1826,7 @@ function buildClientPortalHtml() {
         }
 
         try {
+          setRefreshState(true, "Loading your workspace...");
           const payload = await fetchJson("/client/session");
           state.session = payload;
 
@@ -1675,11 +1837,13 @@ function buildClientPortalHtml() {
             await loadDashboardData();
             showShell("dashboard");
           }
+          setRefreshState(false, "Updated " + new Date().toLocaleTimeString());
         } catch (error) {
           setToken("");
           state.session = null;
           setAuthMessage(error.message, "error");
           showShell("auth");
+          setRefreshState(false, "Refresh failed");
         }
       }
 
@@ -1693,6 +1857,7 @@ function buildClientPortalHtml() {
 
       async function loadDashboardData() {
         setError("");
+        setRefreshState(true, "Refreshing live business data...");
         const [overview, conversations, leads, performance, catalog] = await Promise.all([
           fetchJson("/client/overview"),
           fetchJson("/client/conversations"),
@@ -1715,6 +1880,7 @@ function buildClientPortalHtml() {
           faqs: catalog.faqs || []
         };
 
+        syncSettingsFields(state.overview.tenant);
         renderOverview();
         renderConversations();
         renderLeads();
@@ -1723,6 +1889,7 @@ function buildClientPortalHtml() {
         renderFaqs();
         resetManagedProductForm();
         resetManagedFaqForm();
+        setRefreshState(false, "Updated " + new Date().toLocaleTimeString());
       }
 
       function renderCatalog() {
@@ -1874,7 +2041,7 @@ function buildClientPortalHtml() {
 
       document.getElementById("refresh").addEventListener("click", async function () {
         try {
-          await loadDashboardData();
+          await loadSession();
         } catch (error) {
           setError(error.message);
         }
@@ -2051,6 +2218,7 @@ function buildClientPortalHtml() {
           await postJson("/client/onboarding/profile", payload);
           await loadSession();
           await loadDashboardData();
+          setSettingsEditing("profile", false);
         } catch (error) {
           setError(error.message);
         }
@@ -2064,9 +2232,32 @@ function buildClientPortalHtml() {
           await postJson("/client/onboarding/availability", payload);
           await loadSession();
           await loadDashboardData();
+          setSettingsEditing("availability", false);
         } catch (error) {
           setError(error.message);
         }
+      });
+
+      document.getElementById("edit-profile-settings").addEventListener("click", function () {
+        setSettingsEditing("profile", true);
+      });
+
+      document.getElementById("cancel-profile-settings").addEventListener("click", function () {
+        if (state.session?.tenant) {
+          renderOnboarding();
+        }
+        setSettingsEditing("profile", false);
+      });
+
+      document.getElementById("edit-availability-settings").addEventListener("click", function () {
+        setSettingsEditing("availability", true);
+      });
+
+      document.getElementById("cancel-availability-settings").addEventListener("click", function () {
+        if (state.session?.tenant) {
+          renderOnboarding();
+        }
+        setSettingsEditing("availability", false);
       });
 
       document.getElementById("mark-launch-ready").addEventListener("click", async function () {

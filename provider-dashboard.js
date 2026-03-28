@@ -11,6 +11,8 @@
 
   const errorBanner = document.getElementById("error-banner");
   const authStatus = document.getElementById("auth-status");
+  const refreshButton = document.getElementById("refresh-button");
+  const refreshStatus = document.getElementById("refresh-status");
 
   function setError(message) {
     if (!message) {
@@ -44,6 +46,17 @@
       }
       return payload;
     });
+  }
+
+  function setRefreshState(isLoading, message) {
+    if (refreshButton) {
+      refreshButton.disabled = isLoading;
+      refreshButton.textContent = isLoading ? "Refreshing..." : "Refresh Data";
+    }
+
+    if (refreshStatus && message) {
+      refreshStatus.textContent = message;
+    }
   }
 
   function postJson(path, body) {
@@ -172,6 +185,12 @@
         renderDetailChip("Inbound", tenant.messages.inboundCount) +
         renderDetailChip("Replies", tenant.messages.outboundCount) +
       '</div>' +
+      '<div class="detail-meta-grid">' +
+        renderMetaCard("Owner", tenant.owner_name || "Not provided") +
+        renderMetaCard("Login Email", tenant.owner_email || "Not provided") +
+        renderMetaCard("Onboarding", String(tenant.onboarding_status || "signup_pending").replaceAll("_", " ")) +
+        renderMetaCard("Created", formatDate(tenant.created_at)) +
+      '</div>' +
       '<div class="subtext">Warnings: ' + (tenant.health.warnings.join(", ") || "No warnings") + '</div>' +
       '<div class="detail-section">' +
         '<h4>Recent Messages</h4>' +
@@ -215,6 +234,10 @@
 
   function renderDetailChip(label, value) {
     return '<div class="detail-chip"><span class="label">' + label + '</span><span class="value">' + value + '</span></div>';
+  }
+
+  function renderMetaCard(label, value) {
+    return '<div class="detail-meta-card"><div class="meta-label">' + label + '</div><div class="meta-value">' + escapeHtml(String(value || "—")) + '</div></div>';
   }
 
   function buildMiniTable(rows, columns, emptyMessage) {
@@ -305,6 +328,7 @@
 
   async function loadAll() {
     try {
+      setRefreshState(true, "Refreshing live data...");
       setError("");
       authStatus.textContent = token ? "Token detected" : "Token missing";
 
@@ -339,9 +363,12 @@
       } else if (state.selectedTenantId) {
         await loadTenantDetail(state.selectedTenantId);
       }
+
+      setRefreshState(false, "Updated " + new Date().toLocaleTimeString());
     } catch (error) {
       setError(error.message + "\n\nOpen this page with ?token=YOUR_ADMIN_API_TOKEN or use the x-admin-token header.");
       authStatus.textContent = "Check token";
+      setRefreshState(false, "Refresh failed");
     }
   }
 
