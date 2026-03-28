@@ -404,31 +404,26 @@ function buildClientPortalHtml() {
       backdrop-filter: blur(16px);
     }
     .auth-intro {
-      padding: 28px 14px 28px 20px;
+      padding: 24px 10px 24px 14px;
       background: linear-gradient(180deg, #786ac4 0%, #988ebf 100%);
       border-radius: 26px;
       color: white;
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      justify-content: space-between;
-      align-items: flex-start;
-    }
-    .auth-intro .brand {
-      width: 92px;
-      height: 92px;
-      flex: 0 0 auto;
+      gap: 18px;
+      justify-content: center;
+      align-items: center;
     }
     .auth-vertical {
-      margin-top: 8px;
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      font-size: 38px;
-      line-height: 0.92;
+      gap: 4px;
+      font-size: 36px;
+      line-height: 0.88;
       font-weight: 900;
       letter-spacing: -0.08em;
       color: rgba(255,255,255,0.98);
+      text-align: center;
     }
     .auth-vertical span {
       display: block;
@@ -436,6 +431,7 @@ function buildClientPortalHtml() {
     .auth-intro-copy {
       display: grid;
       gap: 10px;
+      text-align: center;
     }
     .auth-intro h1 {
       margin: 0;
@@ -1187,11 +1183,11 @@ function buildClientPortalHtml() {
       .auth-card, .onboarding-hero, .onboarding-grid {
         grid-template-columns: 1fr;
       }
-      .auth-intro {
-        align-items: stretch;
-      }
       .auth-vertical {
-        display: none;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        font-size: 22px;
       }
       .auth-right {
         display: none;
@@ -1206,12 +1202,15 @@ function buildClientPortalHtml() {
   <section id="auth-shell" class="auth-shell">
     <div class="auth-card">
       <div class="auth-intro">
-        <div>
-          <div class="brand">DM</div>
-          <div class="auth-vertical">
-            <span>Digi</span>
-            <span>Maya</span>
-          </div>
+        <div class="auth-vertical">
+          <span>D</span>
+          <span>i</span>
+          <span>g</span>
+          <span>i</span>
+          <span>M</span>
+          <span>a</span>
+          <span>y</span>
+          <span>a</span>
         </div>
         <div class="auth-intro-copy">
           <div class="eyebrow">DigiMaya Client Setup</div>
@@ -1232,7 +1231,7 @@ function buildClientPortalHtml() {
               <span class="auth-mark-badge">DM</span>
               <span>DigiMaya</span>
             </div>
-            <h2>Sign up or log in</h2>
+            <h2>Our DigiMaya</h2>
             <p>Open your DigiMaya workspace to manage setup, products, FAQs, conversations, and leads in one place.</p>
           </div>
           <div class="auth-forms">
