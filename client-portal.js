@@ -405,9 +405,9 @@ function buildClientPortalHtml() {
     }
     .auth-intro {
       padding: 24px 10px 24px 14px;
-      background: linear-gradient(180deg, #786ac4 0%, #988ebf 100%);
+      background: transparent;
       border-radius: 26px;
-      color: white;
+      color: var(--text);
       display: flex;
       flex-direction: column;
       gap: 18px;
@@ -417,16 +417,23 @@ function buildClientPortalHtml() {
     .auth-vertical {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      font-size: 36px;
+      gap: 10px;
+      font-size: 34px;
       line-height: 0.88;
       font-weight: 900;
       letter-spacing: -0.08em;
-      color: rgba(255,255,255,0.98);
+      color: #564a79;
       text-align: center;
     }
     .auth-vertical span {
-      display: block;
+      display: grid;
+      place-items: center;
+      width: 92px;
+      height: 76px;
+      border-radius: 22px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #e6dbfb;
+      box-shadow: 0 12px 28px rgba(89, 79, 119, 0.08);
     }
     .auth-intro-copy {
       display: none;
@@ -460,9 +467,9 @@ function buildClientPortalHtml() {
     }
     .auth-stage-card {
       width: min(640px, 100%);
-      background: rgba(255,255,255,0.96);
+      background: linear-gradient(180deg, #f6f0ff 0%, #f1eaff 100%);
       border-radius: 30px;
-      border: 1px solid #ece5fa;
+      border: 1px solid #e6dbfb;
       box-shadow: 0 24px 58px rgba(53, 40, 95, 0.1);
       padding: 28px;
       display: grid;
@@ -595,7 +602,7 @@ function buildClientPortalHtml() {
       display: grid;
       gap: 14px;
       justify-items: center;
-      color: #594f77;
+      color: #564a79;
       font-weight: 900;
       letter-spacing: -0.08em;
       font-size: 42px;
@@ -607,8 +614,8 @@ function buildClientPortalHtml() {
       width: 58px;
       height: 58px;
       border-radius: 18px;
-      background: rgba(255,255,255,0.86);
-      border: 1px solid #e7ddfb;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #e6dbfb;
       box-shadow: 0 12px 28px rgba(89, 79, 119, 0.08);
     }
     .field-grid {
