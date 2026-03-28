@@ -2384,7 +2384,7 @@ function buildClientPortalHtml() {
 
         document.querySelectorAll("[data-edit-product]").forEach((button) => {
           button.addEventListener("click", function () {
-            const product = state.catalog.products.find((item) => item.id === button.dataset.editProduct);
+            const product = state.catalog.products.find((item) => String(item.id) === button.dataset.editProduct);
             beginManagedProductEdit(product);
           });
         });
@@ -2416,7 +2416,7 @@ function buildClientPortalHtml() {
 
         document.querySelectorAll("[data-edit-faq]").forEach((button) => {
           button.addEventListener("click", function () {
-            const faq = state.catalog.faqs.find((item) => item.id === button.dataset.editFaq);
+            const faq = state.catalog.faqs.find((item) => String(item.id) === button.dataset.editFaq);
             beginManagedFaqEdit(faq);
           });
         });
