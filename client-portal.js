@@ -389,23 +389,23 @@ function buildClientPortalHtml() {
       min-height: 100vh;
       display: grid;
       place-items: center;
-      padding: 28px;
+      padding: 14px;
     }
     .auth-card {
       width: min(1160px, 100%);
       display: grid;
-      grid-template-columns: 190px minmax(0, 1fr) 110px;
-      gap: 18px;
+      grid-template-columns: 110px minmax(0, 1fr) 110px;
+      gap: 16px;
       background: rgba(255,255,255,0.74);
       border: 1px solid rgba(125, 105, 213, 0.14);
       border-radius: 34px;
-      padding: 22px;
+      padding: 16px;
       box-shadow: 0 28px 70px rgba(54, 41, 101, 0.14);
       backdrop-filter: blur(16px);
     }
     .auth-intro {
-      padding: 24px 10px 24px 14px;
-      background: transparent;
+      padding: 20px 12px;
+      background: linear-gradient(180deg, #f5f0ff 0%, #efebf8 100%);
       border-radius: 26px;
       color: var(--text);
       display: flex;
@@ -417,7 +417,7 @@ function buildClientPortalHtml() {
     .auth-vertical {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
       font-size: 42px;
       line-height: 0.88;
       font-weight: 900;
@@ -428,9 +428,9 @@ function buildClientPortalHtml() {
     .auth-vertical span {
       display: grid;
       place-items: center;
-      width: 74px;
-      height: 74px;
-      border-radius: 22px;
+      width: 58px;
+      height: 58px;
+      border-radius: 18px;
       background: rgba(255,255,255,0.92);
       border: 1px solid #e6dbfb;
       box-shadow: 0 12px 28px rgba(89, 79, 119, 0.08);
@@ -463,7 +463,7 @@ function buildClientPortalHtml() {
     .auth-stage {
       display: grid;
       place-items: center;
-      padding: 10px 0;
+      padding: 6px 0;
     }
     .auth-stage-card {
       width: min(640px, 100%);
@@ -1226,7 +1226,7 @@ function buildClientPortalHtml() {
         flex-direction: row;
         flex-wrap: wrap;
         justify-content: center;
-        font-size: 22px;
+        font-size: 24px;
       }
       .auth-right {
         display: none;
