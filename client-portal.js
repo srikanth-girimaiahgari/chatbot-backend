@@ -3042,7 +3042,7 @@ function createClientPortalRouter({ supabase, resend }) {
       "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
       Pragma: "no-cache",
       Expires: "0",
-      Surrogate-Control: "no-store"
+      "Surrogate-Control": "no-store"
     });
     res.type("html").send(buildClientPortalHtml());
   });
