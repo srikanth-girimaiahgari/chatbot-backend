@@ -2037,6 +2037,40 @@ function buildClientPortalHtml() {
         }
       };
 
+      function normalizeCurrencyCode(value) {
+        const code = String(value || "").trim().toUpperCase();
+        const supported = new Set(["INR", "USD", "GBP", "AUD", "EUR", "CAD"]);
+        return supported.has(code) ? code : "INR";
+      }
+
+      function getCurrencyConfig(code) {
+        const normalized = normalizeCurrencyCode(code);
+        const map = {
+          INR: { code: "INR", symbol: "₹", locale: "en-IN" },
+          USD: { code: "USD", symbol: "$", locale: "en-US" },
+          GBP: { code: "GBP", symbol: "£", locale: "en-GB" },
+          AUD: { code: "AUD", symbol: "A$", locale: "en-AU" },
+          EUR: { code: "EUR", symbol: "€", locale: "en-IE" },
+          CAD: { code: "CAD", symbol: "C$", locale: "en-CA" }
+        };
+        return map[normalized] || map.INR;
+      }
+
+      function formatTenantMoney(amount, currencyCode) {
+        const value = Number(amount);
+        if (!Number.isFinite(value)) {
+          return "—";
+        }
+
+        const currency = getCurrencyConfig(currencyCode);
+        const formatted = value.toLocaleString(currency.locale, {
+          minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+          maximumFractionDigits: 2
+        });
+
+        return currency.symbol + formatted;
+      }
+
       function getAuthHeaders() {
         return token ? { "x-client-token": token } : {};
       }
