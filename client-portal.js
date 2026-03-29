@@ -3038,6 +3038,12 @@ function createClientPortalRouter({ supabase, resend }) {
   const router = express.Router();
 
   router.get("/", (req, res) => {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+      Surrogate-Control: "no-store"
+    });
     res.type("html").send(buildClientPortalHtml());
   });
 
