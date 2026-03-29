@@ -107,6 +107,147 @@ function applyLeadAvailabilityReply(reply, tenant) {
   return `${reply}\n\n${offHoursReply}`.trim();
 }
 
+function normalizeMessageForChecks(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isLowInformationMessage(message) {
+  const normalized = normalizeMessageForChecks(message);
+  if (!normalized) return true;
+  const genericPhrases = [
+    "hi",
+    "hello",
+    "hey",
+    "price",
+    "details",
+    "send details",
+    "more details",
+    "ok",
+    "okay",
+    "yes",
+    "send",
+    "info"
+  ];
+  return normalized.split(" ").length <= 3 || genericPhrases.includes(normalized);
+}
+
+function detectAutomationLoop(recentChats, latestMessage) {
+  const recentUserMessages = [latestMessage]
+    .concat((recentChats || []).filter((chat) => chat.role === "user").map((chat) => chat.content))
+    .slice(0, 4)
+    .map(normalizeMessageForChecks)
+    .filter(Boolean);
+
+  if (recentUserMessages.length < 3) {
+    return false;
+  }
+
+  const uniqueMessages = new Set(recentUserMessages);
+  const allLowInformation = recentUserMessages.every(isLowInformationMessage);
+  const mostlyRepeated = uniqueMessages.size <= 2;
+
+  return allLowInformation && mostlyRepeated;
+}
+
+function countLeadSignals(message) {
+  const normalized = normalizeMessageForChecks(message);
+  const signals = [
+    "price",
+    "cost",
+    "how much",
+    "buy",
+    "order",
+    "payment",
+    "available",
+    "delivery",
+    "shipping",
+    "link",
+    "image",
+    "photo",
+    "picture",
+    "size",
+    "color",
+    "reserve",
+    "urgent",
+    "call",
+    "whatsapp"
+  ];
+
+  return signals.reduce((total, signal) => total + (normalized.includes(signal) ? 1 : 0), 0);
+}
+
+async function notifyLeadOwners(subject, text, tenant) {
+  const recipients = Array.from(new Set(
+    [tenant.lead_contact_email, tenant.owner_email, process.env.ALERT_EMAIL]
+      .filter(Boolean)
+  ));
+
+  if (recipients.length === 0) {
+    return;
+  }
+
+  await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: recipients,
+    subject,
+    text
+  });
+}
+
+async function maybeCreateHotLeadAlert({ sessionId, tenant, latestMessage, recentChats, matchedProducts, channel }) {
+  const totalTurns = (recentChats?.length || 0) + 1;
+  const signalCount = countLeadSignals(latestMessage);
+  const shouldAlert = totalTurns >= 10 || signalCount >= 3;
+
+  if (!shouldAlert) {
+    return;
+  }
+
+  const { data: existingAlert, error: existingError } = await supabase
+    .from("handoff_requests")
+    .select("id")
+    .eq("tenant_id", tenant.id)
+    .eq("session_id", sessionId)
+    .eq("reason", "hot_lead")
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if (existingAlert) {
+    return;
+  }
+
+  const productInterest = matchedProducts?.[0]?.name || "";
+  const reason = totalTurns >= 10 ? "Conversation crossed 10 turns" : "Strong buyer intent detected";
+
+  await supabase.from("handoff_requests").insert({
+    session_id: sessionId,
+    reason: "hot_lead",
+    status: "pending",
+    product_interest: productInterest,
+    tenant_id: tenant.id
+  });
+
+  await notifyLeadOwners(
+    `Hot lead for ${tenant.business_name}`,
+    [
+      `Channel: ${channel}`,
+      `Business: ${tenant.business_name}`,
+      `Reason: ${reason}`,
+      `Latest message: ${latestMessage}`,
+      `Product interest: ${productInterest || "Not identified yet"}`
+    ].join("\n"),
+    tenant
+  );
+}
+
 app.get("/", (req, res) => {
   res.json({ status: "Chatbot backend is running!" });
 });
@@ -222,6 +363,28 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
 
     const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
     const { data: faqs }     = await supabase.from("faqs").select("*").eq("tenant_id", tenant.id);
+    const matchedProducts = findMatchingProducts(products, messageText);
+
+    if (detectAutomationLoop(recentChats, messageText)) {
+      const loopReply = "Happy to help when you're ready with a specific product, price, image, or order question.";
+      await supabase.from("chat_messages").insert({
+        session_id: senderId,
+        role: "assistant",
+        content: loopReply,
+        tenant_id: tenant.id,
+      });
+      return loopReply;
+    }
+
+    await maybeCreateHotLeadAlert({
+      sessionId: senderId,
+      tenant,
+      latestMessage: messageText,
+      recentChats,
+      matchedProducts,
+      channel: "Instagram DM"
+    });
+
     const directReply = getDirectProductReply(products, messageText, tenant) || getDirectBudgetReply(products, messageText, tenant);
     if (directReply) {
       await supabase.from("chat_messages").insert({
@@ -266,13 +429,11 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
         tenant_id: tenant.id,
       });
 
-      // Email alert to you
-      await resend.emails.send({
-        from: "onboarding@resend.dev",
-        to: process.env.ALERT_EMAIL,
-        subject: `New Instagram Lead — ${parts[0]}`,
-        text: `Name: ${parts[0]}\nProduct: ${parts[4]}\nContact: ${parts[2]} — ${parts[3]}`,
-      });
+      await notifyLeadOwners(
+        `New Instagram Lead — ${parts[0] || tenant.business_name}`,
+        `Name: ${parts[0]}\nProduct: ${parts[4]}\nContact: ${parts[2]} — ${parts[3]}`,
+        tenant
+      );
 
       reply = applyLeadAvailabilityReply(reply.split("HANDOFF_READY|")[0].trim(), tenant);
     }
@@ -352,6 +513,27 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
 
     const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
     const { data: faqs }     = await supabase.from("faqs").select("*").eq("tenant_id", tenant.id);
+    const matchedProducts = findMatchingProducts(products, messageText);
+
+    if (detectAutomationLoop(recentChats, messageText)) {
+      const loopReply = "Happy to help when you're ready with a specific product, price, image, or order question.";
+      await supabase.from("chat_messages").insert({
+        session_id: sessionId,
+        role: "assistant",
+        content: loopReply,
+        tenant_id: tenant.id,
+      });
+      return loopReply;
+    }
+
+    await maybeCreateHotLeadAlert({
+      sessionId,
+      tenant,
+      latestMessage: messageText,
+      recentChats,
+      matchedProducts,
+      channel: "WhatsApp"
+    });
 
     const directReply = getDirectProductReply(products, messageText, tenant) || getDirectBudgetReply(products, messageText, tenant);
     if (directReply) {
@@ -397,12 +579,11 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
         tenant_id: tenant.id,
       });
 
-      await resend.emails.send({
-        from: "onboarding@resend.dev",
-        to: process.env.ALERT_EMAIL,
-        subject: `New WhatsApp Lead — ${parts[0]}`,
-        text: `Name: ${parts[0]}\nProduct: ${parts[4]}\nContact: ${parts[2]} — ${parts[3]}\nWhatsApp: ${senderPhone}`,
-      });
+      await notifyLeadOwners(
+        `New WhatsApp Lead — ${parts[0] || tenant.business_name}`,
+        `Name: ${parts[0]}\nProduct: ${parts[4]}\nContact: ${parts[2]} — ${parts[3]}\nWhatsApp: ${senderPhone}`,
+        tenant
+      );
 
       reply = applyLeadAvailabilityReply(reply.split("HANDOFF_READY|")[0].trim(), tenant);
     }
@@ -505,7 +686,15 @@ app.post("/chat", async (req, res) => {
       .order("created_at", { ascending: false })
       .limit(10);
 
-    const directReply = getDirectProductReply(products, message) || getDirectBudgetReply(products, message);
+    const matchedProducts = findMatchingProducts(products, message);
+
+    if (detectAutomationLoop(recentChats, message)) {
+      const loopReply = "Happy to help when you're ready with a specific product, price, image, or order question.";
+      await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: loopReply });
+      return res.json({ reply: loopReply });
+    }
+
+    const directReply = getDirectProductReply(products, message, {}) || getDirectBudgetReply(products, message, {});
     if (directReply) {
       await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: directReply });
       return res.json({ reply: directReply });

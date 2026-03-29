@@ -29,3 +29,6 @@ where owner_email is not null;
 create unique index if not exists tenants_client_dashboard_token_unique
 on tenants (client_dashboard_token)
 where client_dashboard_token is not null;
+
+alter table products
+add column if not exists image_url text;

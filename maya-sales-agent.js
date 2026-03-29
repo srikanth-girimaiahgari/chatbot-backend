@@ -244,7 +244,12 @@ function buildProductHighlights(products, tenant = {}) {
       .filter(Boolean)
       .join(", ");
 
-    return `${product.name} — ${formatMoney(product.price, currency)}\n${product.description}\n${sizes}${tags ? `\nTags: ${tags}` : ""}`;
+    const links = [
+      product.product_url ? `Product link: ${product.product_url}` : null,
+      product.image_url ? `Image: ${product.image_url}` : null
+    ].filter(Boolean).join("\n");
+
+    return `${product.name} — ${formatMoney(product.price, currency)}\n${product.description}\n${sizes}${tags ? `\nTags: ${tags}` : ""}${links ? `\n${links}` : ""}`;
   }).join("\n\n");
 }
 
@@ -278,6 +283,22 @@ function buildProductResponse(product, latestMessage, tenant = {}) {
     ? product.sizes_in_stock.join(", ")
     : null;
   const priceLine = `${product.name} is priced at ${formatMoney(product.price, currency)}.`;
+  const linkLine = product.product_url ? `Product link: ${product.product_url}.` : "";
+  const imageLine = product.image_url ? `Image: ${product.image_url}.` : "";
+
+  if (message.includes("image") || message.includes("photo") || message.includes("picture") || message.includes("pic")) {
+    if (product.image_url || product.product_url) {
+      return `${priceLine} ${imageLine} ${linkLine}`.trim();
+    }
+    return `${priceLine} I can help with product details, but an image link is not saved for this item yet.`;
+  }
+
+  if (message.includes("link") || message.includes("url") || message.includes("website")) {
+    if (product.product_url) {
+      return `${priceLine} ${linkLine}`.trim();
+    }
+    return `${priceLine} A product link is not saved for this item yet, but I can still help with details or similar options.`;
+  }
 
   if (message.includes("available") || message.includes("availability") || message.includes("in stock")) {
     const stockLine = product.in_stock === false

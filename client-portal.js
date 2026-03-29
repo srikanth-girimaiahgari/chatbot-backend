@@ -178,6 +178,58 @@ function formatTenantMoney(amount, currencyCode) {
   return `${currency.symbol}${formatted}`;
 }
 
+function parseDelimitedLine(line) {
+  const values = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseProductImportText(rawText) {
+  const lines = String(rawText || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  return lines
+    .filter((line, index) => !(index === 0 && line.toLowerCase().startsWith("name,")))
+    .map((line) => {
+      const [name, price, category, color, productUrl, imageUrl, ...descriptionParts] = parseDelimitedLine(line);
+      return {
+        name: safeText(name),
+        price: Number(price),
+        category: safeText(category),
+        color: safeText(color),
+        product_url: safeText(productUrl),
+        image_url: safeText(imageUrl),
+        description: safeText(descriptionParts.join(", "))
+      };
+    })
+    .filter((item) => item.name && Number.isFinite(item.price));
+}
+
 function buildDefaultOffHoursReply(tenant) {
   return tenant.off_hours_reply || "Our team is currently offline, but DigiMaya has noted your message and we’ll get back to you as soon as we’re available.";
 }
@@ -1614,12 +1666,31 @@ function buildClientPortalHtml() {
               <label for="product-link">Product URL</label>
               <input id="product-link" name="product_url" placeholder="https://..." />
             </div>
+            <div class="field">
+              <label for="product-image">Image URL</label>
+              <input id="product-image" name="image_url" placeholder="https://image..." />
+            </div>
             <div class="field full">
               <label for="product-description">Description</label>
               <textarea id="product-description" name="description"></textarea>
             </div>
           </div>
           <button class="primary-btn" type="submit">Add Product</button>
+        </form>
+
+        <form id="product-import-form" class="hero-card">
+          <div class="form-head">
+            <div class="eyebrow">Faster setup</div>
+            <h3>Bulk Import Products</h3>
+            <p>Paste one product per line to load your catalog faster. Use this format: name, price, category, color, product_url, image_url, description.</p>
+          </div>
+          <div class="field-grid">
+            <div class="field full">
+              <label for="product-import-text">Products to import</label>
+              <textarea id="product-import-text" name="products_text" placeholder='Bridal Haram,95,Jewelry,Green,https://store.com/haram,https://store.com/haram.jpg,Grand bridal haram with peacock details&#10;Banarasi Saree,45,Fashion,Yellow Pink,https://store.com/saree,https://store.com/saree.jpg,Banarasi silk saree with stitched blouse'></textarea>
+            </div>
+          </div>
+          <button class="primary-btn" type="submit">Import Products</button>
         </form>
 
         <form id="faq-form" class="hero-card">
@@ -1756,20 +1827,43 @@ function buildClientPortalHtml() {
                 <label for="manage-product-color">Color</label>
                 <input id="manage-product-color" name="color" />
               </div>
-              <div class="field">
-                <label for="manage-product-url">Product URL</label>
-                <input id="manage-product-url" name="product_url" />
-              </div>
-              <div class="field full">
-                <label for="manage-product-description">Description</label>
-                <textarea id="manage-product-description" name="description"></textarea>
-              </div>
+            <div class="field">
+              <label for="manage-product-url">Product URL</label>
+              <input id="manage-product-url" name="product_url" />
             </div>
-            <div class="inline-actions">
+            <div class="field">
+              <label for="manage-product-image-url">Image URL</label>
+              <input id="manage-product-image-url" name="image_url" />
+            </div>
+            <div class="field full">
+              <label for="manage-product-description">Description</label>
+              <textarea id="manage-product-description" name="description"></textarea>
+            </div>
+          </div>
+          <div class="inline-actions">
               <button id="save-product-button" class="primary-btn" type="submit">Save Product</button>
               <button id="cancel-product-edit" class="secondary-btn" type="button">Cancel Edit</button>
-            </div>
+          </div>
           </form>
+          <div class="card" style="margin-top:16px;">
+            <div class="toolbar">
+              <div>
+                <h3>Quick Import</h3>
+                <div class="muted-note">Paste one product per line: name, price, category, color, product_url, image_url, description.</div>
+              </div>
+            </div>
+            <form id="catalog-import-form" class="management-form">
+              <div class="field-grid">
+                <div class="field full">
+                  <label for="catalog-import-text">Bulk product lines</label>
+                  <textarea id="catalog-import-text" name="products_text" placeholder='Bridal Haram,95,Jewelry,Green,https://store.com/haram,https://store.com/haram.jpg,Grand bridal haram with peacock details'></textarea>
+                </div>
+              </div>
+              <div class="inline-actions">
+                <button class="primary-btn" type="submit">Import Products</button>
+              </div>
+            </form>
+          </div>
         </div>
       </section>
 
@@ -2200,6 +2294,7 @@ function buildClientPortalHtml() {
         document.getElementById("manage-product-regular-price").value = product.regular_price == null ? "" : product.regular_price;
         document.getElementById("manage-product-color").value = product.color || "";
         document.getElementById("manage-product-url").value = product.product_url || "";
+        document.getElementById("manage-product-image-url").value = product.image_url || "";
         document.getElementById("manage-product-description").value = product.description || "";
         document.getElementById("save-product-button").textContent = "Update Product";
         const form = document.getElementById("catalog-management-form");
@@ -2448,6 +2543,8 @@ function buildClientPortalHtml() {
             { label: "Category", render: (row) => row.category || "—" },
             { label: "Price", render: (row) => formatTenantMoney(row.price, state.overview?.tenant?.currency_code) },
             { label: "Color", render: (row) => row.color || "—" },
+            { label: "Link", render: (row) => row.product_url ? '<a href="' + row.product_url + '" target="_blank" rel="noreferrer">Open</a>' : "—" },
+            { label: "Image", render: (row) => row.image_url ? '<a href="' + row.image_url + '" target="_blank" rel="noreferrer">View</a>' : "—" },
             { label: "Actions", render: (row) => '<div class="action-row"><button class="small-btn" type="button" data-edit-product="' + row.id + '">Edit</button><button class="small-btn danger" type="button" data-delete-product="' + row.id + '">Delete</button></div>' }
           ],
           "No products yet."
@@ -2702,6 +2799,21 @@ function buildClientPortalHtml() {
         }
       });
 
+      document.getElementById("product-import-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          setOnboardingMessage("");
+          const form = new FormData(event.target);
+          const payload = Object.fromEntries(form.entries());
+          await postJson("/client/onboarding/catalog/import", payload);
+          event.target.reset();
+          setOnboardingMessage("Products imported into your catalog.", "success");
+          await loadSession();
+        } catch (error) {
+          setOnboardingMessage(error.message, "error");
+        }
+      });
+
       document.getElementById("faq-form").addEventListener("submit", async function (event) {
         event.preventDefault();
         try {
@@ -2733,6 +2845,19 @@ function buildClientPortalHtml() {
           } else {
             await postJson("/client/onboarding/catalog/product", payload);
           }
+          await loadDashboardData();
+        } catch (error) {
+          setError(error.message);
+        }
+      });
+
+      document.getElementById("catalog-import-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          const form = new FormData(event.target);
+          const payload = Object.fromEntries(form.entries());
+          await postJson("/client/onboarding/catalog/import", payload);
+          event.target.reset();
           await loadDashboardData();
         } catch (error) {
           setError(error.message);
@@ -3123,6 +3248,7 @@ function createClientPortalRouter({ supabase, resend }) {
         in_stock: true,
         sizes_in_stock: [],
         product_url: safeText(req.body.product_url),
+        image_url: safeText(req.body.image_url),
         color: safeText(req.body.color)
       };
 
@@ -3171,6 +3297,42 @@ function createClientPortalRouter({ supabase, resend }) {
     }
   });
 
+  router.post("/onboarding/catalog/import", async (req, res) => {
+    try {
+      const rows = parseProductImportText(req.body.products_text);
+      if (rows.length === 0) {
+        return res.status(400).json({ error: "Add at least one valid product line to import" });
+      }
+
+      const insertPayload = rows.map((row) => ({
+        tenant_id: req.tenant.id,
+        name: row.name,
+        description: row.description,
+        price: row.price,
+        regular_price: null,
+        category: row.category,
+        in_stock: true,
+        sizes_in_stock: [],
+        product_url: row.product_url,
+        image_url: row.image_url,
+        color: row.color
+      }));
+
+      const { data, error } = await supabase
+        .from("products")
+        .insert(insertPayload)
+        .select("*");
+
+      if (error) {
+        throw error;
+      }
+
+      res.status(201).json({ products: data || [] });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.put("/catalog/product/:productId", async (req, res) => {
     try {
       const updatePayload = {
@@ -3180,7 +3342,8 @@ function createClientPortalRouter({ supabase, resend }) {
         regular_price: req.body.regular_price === "" || req.body.regular_price == null ? null : Number(req.body.regular_price),
         category: safeText(req.body.category),
         color: safeText(req.body.color),
-        product_url: safeText(req.body.product_url)
+        product_url: safeText(req.body.product_url),
+        image_url: safeText(req.body.image_url)
       };
 
       const { data, error } = await supabase
