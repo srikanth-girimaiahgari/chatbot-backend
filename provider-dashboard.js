@@ -222,6 +222,8 @@
           { label: "Customer", render: (row) => escapeHtml(String(row.customer_name || row.session_id || "—")) },
           { label: "Product", render: (row) => escapeHtml(String(row.product_interest || "—")) },
           { label: "Qty", render: (row) => row.quantity || "—" },
+          { label: "Amount", render: (row) => row.total_amount != null ? escapeHtml(String(row.total_amount)) + " " + escapeHtml(String(row.currency_code || "")) : "—" },
+          { label: "Payment", render: (row) => row.payment_status || "—" },
           { label: "Status", render: (row) => row.status || "—" }
         ], "No draft orders for this tenant yet.") +
       '</div>' +

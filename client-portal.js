@@ -2710,6 +2710,7 @@ function buildClientPortalHtml() {
             { label: "Customer", render: (row) => row.customer_name || row.session_id || "—" },
             { label: "Interest", render: (row) => row.product_interest || "—" },
             { label: "Qty", render: (row) => row.quantity || "—" },
+            { label: "Amount", render: (row) => row.record_type === "draft_order" && row.total_amount != null ? formatTenantMoney(row.total_amount, row.currency_code || state.overview?.tenant?.currency_code) : "—" },
             { label: "Contact Method", render: (row) => row.contact_method || "—" },
             { label: "Contact", render: (row) => row.contact_detail || "—" },
             { label: "Status", render: (row) => row.status || "—" }
