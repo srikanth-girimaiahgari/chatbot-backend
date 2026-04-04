@@ -210,13 +210,34 @@ function normalizeLookupText(value) {
     .trim();
 }
 
-async function resolveProductForIntent(tenantId, productInterest) {
-  if (!tenantId || !productInterest) {
+function splitRequestedProducts(productInterest) {
+  return String(productInterest || "")
+    .split(/,|\n|;/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function resolveProductAgainstCatalog(products, productInterest) {
+  if (!productInterest) {
     return null;
   }
 
+  const rows = products || [];
+  const normalizedInterest = normalizeLookupText(productInterest);
+  const exact = rows.find((product) => normalizeLookupText(product.name) === normalizedInterest);
+  if (exact) {
+    return exact;
+  }
+
+  return rows.find((product) => normalizedInterest.includes(normalizeLookupText(product.name)) || normalizeLookupText(product.name).includes(normalizedInterest)) || null;
+}
+
+async function resolveProductsForIntent(tenantId, productInterest, requestedQuantity) {
+  if (!tenantId || !productInterest) {
+    return [];
+  }
+
   try {
-    const normalizedInterest = normalizeLookupText(productInterest);
     const { data: products, error } = await supabase
       .from("products")
       .select("id, name, price")
@@ -228,17 +249,44 @@ async function resolveProductForIntent(tenantId, productInterest) {
       throw error;
     }
 
-    const rows = products || [];
-    const exact = rows.find((product) => normalizeLookupText(product.name) === normalizedInterest);
-    if (exact) {
-      return exact;
+    const requestedItems = splitRequestedProducts(productInterest);
+    const resolvedItems = requestedItems
+      .map((requestedName) => {
+        const matchedProduct = resolveProductAgainstCatalog(products || [], requestedName);
+        if (!matchedProduct) {
+          return null;
+        }
+
+        return {
+          requested_name: requestedName,
+          product_id: matchedProduct.id,
+          product_name: matchedProduct.name,
+          quantity: 1,
+          unit_price: matchedProduct.price == null ? null : Number(matchedProduct.price)
+        };
+      })
+      .filter(Boolean);
+
+    if (resolvedItems.length > 1 && requestedQuantity && requestedQuantity !== resolvedItems.length) {
+      const firstItem = resolvedItems[0];
+      resolvedItems.splice(0, resolvedItems.length, {
+        ...firstItem,
+        requested_name: productInterest,
+        quantity: requestedQuantity
+      });
     }
 
-    const partial = rows.find((product) => normalizedInterest.includes(normalizeLookupText(product.name)) || normalizeLookupText(product.name).includes(normalizedInterest));
-    return partial || null;
+    if (resolvedItems.length === 1) {
+      resolvedItems[0].quantity = requestedQuantity || resolvedItems[0].quantity;
+    }
+
+    return resolvedItems.map((item) => ({
+      ...item,
+      line_total: item.unit_price == null ? null : Number((item.unit_price * item.quantity).toFixed(2))
+    }));
   } catch (error) {
     console.error("Product resolution error:", error.message);
-    return null;
+    return [];
   }
 }
 
@@ -340,10 +388,14 @@ async function upsertDraftOrder({ tenant, sessionId, channel, latestMessage, int
 
     const unresolvedStatuses = ["draft", "awaiting_payment", "payment_sent"];
     const now = new Date().toISOString();
-    const matchedProduct = await resolveProductForIntent(tenant.id, intent.productInterest);
-    const quantity = intent.quantity || 1;
-    const unitPrice = matchedProduct?.price == null ? null : Number(matchedProduct.price);
-    const totalAmount = unitPrice == null ? null : Number((unitPrice * quantity).toFixed(2));
+    const resolvedItems = await resolveProductsForIntent(tenant.id, intent.productInterest, intent.quantity || 1);
+    const totalQuantity = resolvedItems.length > 0
+      ? resolvedItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
+      : (intent.quantity || 1);
+    const totalAmount = resolvedItems.length > 0 && resolvedItems.every((item) => item.line_total != null)
+      ? Number(resolvedItems.reduce((sum, item) => sum + item.line_total, 0).toFixed(2))
+      : null;
+    const primaryItem = resolvedItems.length === 1 ? resolvedItems[0] : null;
     const payload = {
       tenant_id: tenant.id,
       order_intent_id: orderIntentId || null,
@@ -353,10 +405,10 @@ async function upsertDraftOrder({ tenant, sessionId, channel, latestMessage, int
       contact_method: intent.contactMethod || null,
       contact_detail: intent.contactDetail || null,
       product_interest: intent.productInterest || null,
-      quantity,
-      product_id: matchedProduct?.id || null,
+      quantity: totalQuantity,
+      product_id: primaryItem?.product_id || null,
       currency_code: tenant.currency_code || "INR",
-      unit_price: unitPrice,
+      unit_price: primaryItem?.unit_price ?? null,
       total_amount: totalAmount,
       payment_status: "not_started",
       source_message: latestMessage,
@@ -389,6 +441,24 @@ async function upsertDraftOrder({ tenant, sessionId, channel, latestMessage, int
         throw error;
       }
 
+      await supabase.from("order_items").delete().eq("order_id", data.id);
+      if (resolvedItems.length > 0) {
+        const { error: itemsError } = await supabase
+          .from("order_items")
+          .insert(resolvedItems.map((item) => ({
+            order_id: data.id,
+            product_id: item.product_id || null,
+            product_name: item.product_name || item.requested_name,
+            quantity: item.quantity || 1,
+            unit_price: item.unit_price,
+            line_total: item.line_total
+          })));
+
+        if (itemsError) {
+          throw itemsError;
+        }
+      }
+
       return data;
     }
 
@@ -404,6 +474,23 @@ async function upsertDraftOrder({ tenant, sessionId, channel, latestMessage, int
 
     if (error) {
       throw error;
+    }
+
+    if (resolvedItems.length > 0) {
+      const { error: itemsError } = await supabase
+        .from("order_items")
+        .insert(resolvedItems.map((item) => ({
+          order_id: data.id,
+          product_id: item.product_id || null,
+          product_name: item.product_name || item.requested_name,
+          quantity: item.quantity || 1,
+          unit_price: item.unit_price,
+          line_total: item.line_total
+        })));
+
+      if (itemsError) {
+        throw itemsError;
+      }
     }
 
     return data;

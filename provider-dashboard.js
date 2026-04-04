@@ -228,6 +228,16 @@
         ], "No draft orders for this tenant yet.") +
       '</div>' +
       '<div class="detail-section">' +
+        '<h4>Recent Order Items</h4>' +
+        buildMiniTable(payload.recent_order_items, [
+          { label: "Order", render: (row) => escapeHtml(String(row.order_id || "—")).slice(0, 8) },
+          { label: "Product", render: (row) => escapeHtml(String(row.product_name || "—")) },
+          { label: "Qty", render: (row) => row.quantity || "—" },
+          { label: "Unit Price", render: (row) => row.unit_price != null ? escapeHtml(String(row.unit_price)) : "—" },
+          { label: "Line Total", render: (row) => row.line_total != null ? escapeHtml(String(row.line_total)) : "—" }
+        ], "No order items for this tenant yet.") +
+      '</div>' +
+      '<div class="detail-section">' +
         '<h4>Recent Handoffs</h4>' +
         buildMiniTable(payload.recent_handoffs, [
           { label: "When", render: (row) => formatDate(row.created_at) },
