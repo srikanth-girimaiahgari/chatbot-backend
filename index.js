@@ -202,6 +202,46 @@ function parsePurchaseIntentPayload(reply) {
   };
 }
 
+function normalizeLookupText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function resolveProductForIntent(tenantId, productInterest) {
+  if (!tenantId || !productInterest) {
+    return null;
+  }
+
+  try {
+    const normalizedInterest = normalizeLookupText(productInterest);
+    const { data: products, error } = await supabase
+      .from("products")
+      .select("id, name, price")
+      .eq("tenant_id", tenantId)
+      .eq("in_stock", true)
+      .limit(100);
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = products || [];
+    const exact = rows.find((product) => normalizeLookupText(product.name) === normalizedInterest);
+    if (exact) {
+      return exact;
+    }
+
+    const partial = rows.find((product) => normalizedInterest.includes(normalizeLookupText(product.name)) || normalizeLookupText(product.name).includes(normalizedInterest));
+    return partial || null;
+  } catch (error) {
+    console.error("Product resolution error:", error.message);
+    return null;
+  }
+}
+
 async function notifyLeadOwners(subject, text, tenant) {
   const recipients = Array.from(new Set(
     [tenant.lead_contact_email, tenant.owner_email, process.env.ALERT_EMAIL]
@@ -300,6 +340,10 @@ async function upsertDraftOrder({ tenant, sessionId, channel, latestMessage, int
 
     const unresolvedStatuses = ["draft", "awaiting_payment", "payment_sent"];
     const now = new Date().toISOString();
+    const matchedProduct = await resolveProductForIntent(tenant.id, intent.productInterest);
+    const quantity = intent.quantity || 1;
+    const unitPrice = matchedProduct?.price == null ? null : Number(matchedProduct.price);
+    const totalAmount = unitPrice == null ? null : Number((unitPrice * quantity).toFixed(2));
     const payload = {
       tenant_id: tenant.id,
       order_intent_id: orderIntentId || null,
@@ -309,7 +353,12 @@ async function upsertDraftOrder({ tenant, sessionId, channel, latestMessage, int
       contact_method: intent.contactMethod || null,
       contact_detail: intent.contactDetail || null,
       product_interest: intent.productInterest || null,
-      quantity: intent.quantity || 1,
+      quantity,
+      product_id: matchedProduct?.id || null,
+      currency_code: tenant.currency_code || "INR",
+      unit_price: unitPrice,
+      total_amount: totalAmount,
+      payment_status: "not_started",
       source_message: latestMessage,
       updated_at: now
     };
