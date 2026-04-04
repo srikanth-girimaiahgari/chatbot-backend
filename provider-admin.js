@@ -434,7 +434,7 @@ function createProviderAdminRouter({ supabase }) {
       const tenant = tenantResult.data;
       const snapshot = await buildTenantSnapshot(supabase, tenant);
 
-      const [recentMessagesResult, recentHandoffsResult, recentOrderIntentsResult, recentOrdersResult, topProductsResult, topFaqsResult] = await Promise.all([
+      const [recentMessagesResult, recentHandoffsResult, recentOrderIntentsResult, recentOrdersResult, recentOrderItemsResult, topProductsResult, topFaqsResult] = await Promise.all([
         supabase
           .from("chat_messages")
           .select("id, session_id, role, content, created_at, tenant_id")
@@ -460,6 +460,11 @@ function createProviderAdminRouter({ supabase }) {
           .order("created_at", { ascending: false })
           .limit(20),
         supabase
+          .from("order_items")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(50),
+        supabase
           .from("products")
           .select("id,name,price,in_stock,regular_price,discount_percentage,product_url,image_url,color")
           .eq("tenant_id", tenantId)
@@ -478,6 +483,9 @@ function createProviderAdminRouter({ supabase }) {
         recent_handoffs: recentHandoffsResult.data || [],
         recent_order_intents: recentOrderIntentsResult.data || [],
         recent_orders: recentOrdersResult.data || [],
+        recent_order_items: (recentOrderItemsResult.data || []).filter((item) =>
+          (recentOrdersResult.data || []).some((order) => order.id === item.order_id)
+        ),
         products: topProductsResult.data || [],
         faqs: topFaqsResult.data || []
       });
