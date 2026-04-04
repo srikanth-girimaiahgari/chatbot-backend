@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DigiMaya Build Log</title>
+  <style>
+    :root {
+      --bg: #f7f3ff;
+      --panel: #ffffff;
+      --panel-soft: #f3edff;
+      --line: #e3d8fb;
+      --text: #2e2950;
+      --muted: #6f6990;
+      --accent: #7a68d6;
+      --accent-dark: #57479f;
+      --good: #e8f8ef;
+      --good-text: #1f6a3b;
+      --warn: #fff4e4;
+      --warn-text: #8a5a14;
+      --shadow: 0 24px 70px rgba(61, 42, 112, 0.10);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(144, 112, 238, 0.12), transparent 35%),
+        radial-gradient(circle at top right, rgba(188, 165, 255, 0.14), transparent 28%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 40px 20px 60px;
+    }
+
+    .hero {
+      background: linear-gradient(145deg, rgba(255,255,255,0.95), rgba(244,236,255,0.95));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    h1, h2, h3 { margin: 0; }
+    h1 {
+      font-size: clamp(34px, 4vw, 52px);
+      line-height: 1.04;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.7;
+      max-width: 860px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .summary-card,
+    .entry,
+    .note-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .summary-card {
+      padding: 20px;
+    }
+
+    .summary-card .label {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .summary-card .value {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--accent-dark);
+    }
+
+    .section-title {
+      margin: 36px 0 14px;
+      font-size: 26px;
+    }
+
+    .entry {
+      padding: 26px;
+      margin-bottom: 18px;
+    }
+
+    .entry-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .entry-title {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .entry-sub {
+      color: var(--muted);
+      line-height: 1.7;
+      max-width: 720px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    .status-live {
+      background: var(--good);
+      color: var(--good-text);
+    }
+
+    .status-dev {
+      background: var(--warn);
+      color: var(--warn-text);
+    }
+
+    .logic-box {
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px 18px;
+      margin-bottom: 18px;
+    }
+
+    .logic-box strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--accent-dark);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+
+    .note-card {
+      padding: 18px;
+    }
+
+    .note-card h3 {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: var(--accent-dark);
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    .footer-note {
+      margin-top: 30px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div class="eyebrow">DigiMaya Build Log</div>
+      <h1>What we planned, what went live, and what changed on the way</h1>
+      <p>This is the living record of DigiMaya. It is meant to stay honest. Every meaningful update should capture the original idea, what actually shipped, and what still remains before the next step becomes real.</p>
+
+      <div class="summary">
+        <div class="summary-card">
+          <div class="label">Working Product Shape</div>
+          <div class="value">Multi-tenant DM platform</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Current Direction</div>
+          <div class="value">Digital employee</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Documentation Rule</div>
+          <div class="value">Plan + live outcome</div>
+        </div>
+      </div>
+    </section>
+
+    <h2 class="section-title">Live Milestones</h2>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Foundation</div>
+          <h3 class="entry-title">Multi-tenant DM routing became real</h3>
+          <div class="entry-sub">The original goal was simple: one system, many businesses, no product or FAQ mix-up between them. This is the layer that turned DigiMaya from a single bot into a service platform.</div>
+        </div>
+        <span class="status-pill status-live">Live</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        Without clean tenant separation, nothing above it can be trusted. This step made DigiMaya operational at the business-account level.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>One backend should serve multiple businesses.</li>
+            <li>Each business should only use its own products and FAQs.</li>
+            <li>Instagram messages should route to the correct business automatically.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What went live</h3>
+          <ul>
+            <li>Tenant-based Instagram DM routing.</li>
+            <li>Tenant-specific product and FAQ replies.</li>
+            <li>Provider dashboard support for more than one business.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What changed from the idea</h3>
+          <ul>
+            <li>Instagram became the strongest first channel.</li>
+            <li>Website chat was deliberately deprioritized.</li>
+            <li>WhatsApp stayed secondary because Meta setup created friction.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Operations</div>
+          <h3 class="entry-title">Provider dashboard and Google Sheet monitoring</h3>
+          <div class="entry-sub">The plan was not only to make MAYA reply, but to make DigiMaya operable as a service. This became the internal control room.</div>
+        </div>
+        <span class="status-pill status-live">Live</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        If the service provider cannot see health, activity, and setup status, the product is not manageable at scale.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>One place to monitor all businesses.</li>
+            <li>Simple health and activity visibility.</li>
+            <li>Google Sheets sync for lightweight reporting.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What went live</h3>
+          <ul>
+            <li>Admin dashboard with overview, tenants, activity, and handoffs.</li>
+            <li>Google Sheets export endpoint.</li>
+            <li>Hourly Sheets trigger for recurring updates.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What changed from the idea</h3>
+          <ul>
+            <li>Provider dashboard became the source of truth.</li>
+            <li>Google Sheets became a reporting layer, not the core system.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Client Layer</div>
+          <h3 class="entry-title">Client signup, onboarding, and branded portal</h3>
+          <div class="entry-sub">The goal was to stop doing everything manually for each business. DigiMaya needed a client-facing workspace that felt like a real SaaS product.</div>
+        </div>
+        <span class="status-pill status-live">Live</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        A service becomes a product when onboarding, settings, and day-to-day visibility stop depending on the builder doing everything by hand.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>Clients should sign up and log in themselves.</li>
+            <li>Clients should add products, FAQs, hours, and profile details.</li>
+            <li>The portal should feel branded and product-like.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What went live</h3>
+          <ul>
+            <li>Client signup, login, logout, onboarding, and settings.</li>
+            <li>Editable catalog and FAQ management.</li>
+            <li>Admin-first, client-second activation flow.</li>
+            <li>Branded DigiMaya entry screen and lavender UI system.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What changed from the idea</h3>
+          <ul>
+            <li>Manual Meta setup stayed in the loop for now.</li>
+            <li>The portal evolved from form-heavy to brand-first entry design.</li>
+            <li>Client dashboard stayed business-focused, not technical.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Commerce Quality</div>
+          <h3 class="entry-title">Lead protection, product links, and onboarding friction reduction</h3>
+          <div class="entry-sub">Once the product was live, the next need was quality: better product replies, better lead handling, and less manual effort for the client.</div>
+        </div>
+        <span class="status-pill status-live">Live</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        A business assistant becomes useful when it protects time, avoids dumb loops, and helps move real customer intent forward.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>Hot leads should be flagged.</li>
+            <li>Low-value assistant loops should stop.</li>
+            <li>Products should support links and images.</li>
+            <li>Clients should import products more easily.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What went live</h3>
+          <ul>
+            <li>Hot lead alerts after strong intent or 10+ turns.</li>
+            <li>Anti-loop protection for repetitive low-information chats.</li>
+            <li>Product URL and image URL support.</li>
+            <li>Bulk product import by pasted lines in the client portal.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What changed from the idea</h3>
+          <ul>
+            <li>Lead alerts stayed useful, but no longer define the whole sales flow.</li>
+            <li>The bigger goal shifted from “notify seller” to “remove seller from routine flow.”</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <h2 class="section-title">Current Development Step</h2>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Digital Employee Step 1</div>
+          <h3 class="entry-title">Structured order intents</h3>
+          <div class="entry-sub">This is the first step where DigiMaya starts acting like a digital employee, not just a pre-sales assistant. Purchase-ready conversations are turned into structured business records.</div>
+        </div>
+        <span class="status-pill status-dev">In Development</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        Before DigiMaya can create payment links or confirm orders, it needs a clean internal object for purchase-ready work. That object is the order intent.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>Move beyond loose handoffs.</li>
+            <li>Capture purchase-ready details in a structured way.</li>
+            <li>Start removing the seller from the normal lead path.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What has been built so far</h3>
+          <ul>
+            <li>New <code>order_intents</code> SQL migration.</li>
+            <li>Instagram and WhatsApp purchase-intent capture into structured records.</li>
+            <li>Admin and client dashboard visibility for order-intent counts and lists.</li>
+            <li>Draft-order layer has now been started on top of order intents.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What is not live yet</h3>
+          <ul>
+            <li>No payment links yet.</li>
+            <li>No order confirmation yet.</li>
+            <li>No stock deduction yet.</li>
+            <li>This step still needs to be pushed live after testing.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Digital Employee Step 2</div>
+          <h3 class="entry-title">Draft orders from purchase-ready DMs</h3>
+          <div class="entry-sub">The next logical move after order intent is to let DigiMaya prepare a real draft order. This is the first point where the system begins organizing an actual transaction object, even before payment is added.</div>
+        </div>
+        <span class="status-pill status-dev">In Development</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        Payment should not happen before DigiMaya has a proper order object. Draft orders are the bridge between “customer wants to buy” and “customer is being charged correctly.”
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>Turn structured order intent into a real draft order.</li>
+            <li>Keep seller out of the normal path unless something is unclear.</li>
+            <li>Prepare DigiMaya for payment links later without jumping too early.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What has been built so far</h3>
+          <ul>
+            <li>New <code>orders</code> SQL migration for draft orders.</li>
+            <li>Automatic draft-order creation from structured order intents.</li>
+            <li>Admin and client dashboard metrics for draft orders.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What is not live yet</h3>
+          <ul>
+            <li>No payment gateway is attached yet.</li>
+            <li>No paid order state or fulfillment flow yet.</li>
+            <li>This step also still needs to be pushed live after testing.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <h2 class="section-title">Documentation Rule Going Forward</h2>
+
+    <article class="entry">
+      <div class="logic-box">
+        <strong>Rule</strong>
+        Every meaningful DigiMaya update should record three things:
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>1. Original thought</h3>
+          <ul>
+            <li>What we wanted to build.</li>
+            <li>Why we thought it mattered.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>2. Live outcome</h3>
+          <ul>
+            <li>What actually shipped.</li>
+            <li>What the product can really do now.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>3. Honest correction</h3>
+          <ul>
+            <li>What changed from the original idea.</li>
+            <li>What still does not work or is not ready.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <p class="footer-note">Prepared for DigiMaya. This document is designed to be updated as the product evolves from AI DM assistant into a true digital employee for online businesses.</p>
+  </div>
+</body>
+</html>

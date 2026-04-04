@@ -100,6 +100,42 @@ async function getTenantHandoffMetrics(supabase, tenantId) {
   };
 }
 
+async function getTenantOrderIntentMetrics(supabase, tenantId) {
+  const { data, count, error } = await supabase
+    .from("order_intents")
+    .select("id, created_at", { count: "exact" })
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    totalOrderIntents: count || 0,
+    lastOrderIntentAt: formatTimestamp(data?.[0]?.created_at || null)
+  };
+}
+
+async function getTenantOrderMetrics(supabase, tenantId) {
+  const { data, count, error } = await supabase
+    .from("orders")
+    .select("id, created_at", { count: "exact" })
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    totalOrders: count || 0,
+    lastOrderAt: formatTimestamp(data?.[0]?.created_at || null)
+  };
+}
+
 function buildTenantHealth({ tenant, catalogCounts, messageMetrics, handoffMetrics }) {
   const warnings = [];
 
@@ -136,10 +172,12 @@ function buildTenantHealth({ tenant, catalogCounts, messageMetrics, handoffMetri
 }
 
 async function buildTenantSnapshot(supabase, tenant) {
-  const [catalogCounts, messageMetrics, handoffMetrics] = await Promise.all([
+  const [catalogCounts, messageMetrics, handoffMetrics, orderIntentMetrics, orderMetrics] = await Promise.all([
     getTenantCatalogCounts(supabase, tenant.id),
     getTenantMessageMetrics(supabase, tenant.id),
-    getTenantHandoffMetrics(supabase, tenant.id)
+    getTenantHandoffMetrics(supabase, tenant.id),
+    getTenantOrderIntentMetrics(supabase, tenant.id),
+    getTenantOrderMetrics(supabase, tenant.id)
   ]);
 
   const health = buildTenantHealth({
@@ -166,6 +204,8 @@ async function buildTenantSnapshot(supabase, tenant) {
     catalog: catalogCounts,
     messages: messageMetrics,
     handoffs: handoffMetrics,
+    order_intents: orderIntentMetrics,
+    orders: orderMetrics,
     health
   };
 }
@@ -223,7 +263,11 @@ function buildSheetsExportPayload({ summary, tenants }) {
         business_name: tenant.business_name,
         pending_handoffs: tenant.handoffs.pendingHandoffs,
         total_handoffs: tenant.handoffs.totalHandoffs,
-        last_handoff_at: tenant.handoffs.lastHandoffAt || ""
+        last_handoff_at: tenant.handoffs.lastHandoffAt || "",
+        total_order_intents: tenant.order_intents.totalOrderIntents,
+        last_order_intent_at: tenant.order_intents.lastOrderIntentAt || "",
+        total_orders: tenant.orders.totalOrders,
+        last_order_at: tenant.orders.lastOrderAt || ""
       })),
       daily_summary: [
         {
@@ -234,6 +278,8 @@ function buildSheetsExportPayload({ summary, tenants }) {
           faqs_count: summary.faqs_count,
           messages_count: summary.messages_count,
           handoffs_count: summary.handoffs_count,
+          order_intents_count: summary.order_intents_count,
+          orders_count: summary.orders_count,
           pending_handoffs: summary.pending_handoffs,
           tenants_needing_attention: tenants.filter((tenant) => tenant.health.status !== "healthy").length
         }
@@ -264,13 +310,15 @@ function createProviderAdminRouter({ supabase }) {
 
   router.get("/overview", async (req, res) => {
     try {
-      const [tenantsResult, productsResult, faqsResult, messagesResult, handoffsResult, pendingHandoffsResult] = await Promise.all([
+      const [tenantsResult, productsResult, faqsResult, messagesResult, handoffsResult, pendingHandoffsResult, orderIntentsResult, ordersResult] = await Promise.all([
         supabase.from("tenants").select("*", { count: "exact", head: true }),
         supabase.from("products").select("*", { count: "exact", head: true }),
         supabase.from("faqs").select("*", { count: "exact", head: true }),
         supabase.from("chat_messages").select("*", { count: "exact", head: true }),
         supabase.from("handoff_requests").select("*", { count: "exact", head: true }),
-        supabase.from("handoff_requests").select("*", { count: "exact", head: true }).eq("status", "pending")
+        supabase.from("handoff_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("order_intents").select("*", { count: "exact", head: true }),
+        supabase.from("orders").select("*", { count: "exact", head: true })
       ]);
 
       const { data: tenants, error: tenantsError } = await supabase
@@ -290,6 +338,8 @@ function createProviderAdminRouter({ supabase }) {
         faqs_count: faqsResult.count || 0,
         messages_count: messagesResult.count || 0,
         handoffs_count: handoffsResult.count || 0,
+        order_intents_count: orderIntentsResult.count || 0,
+        orders_count: ordersResult.count || 0,
         pending_handoffs: pendingHandoffsResult.count || 0
       };
 
@@ -304,13 +354,15 @@ function createProviderAdminRouter({ supabase }) {
 
   router.get("/exports/google-sheets", async (req, res) => {
     try {
-      const [tenantsResult, productsResult, faqsResult, messagesResult, handoffsResult, pendingHandoffsResult] = await Promise.all([
+      const [tenantsResult, productsResult, faqsResult, messagesResult, handoffsResult, pendingHandoffsResult, orderIntentsResult, ordersResult] = await Promise.all([
         supabase.from("tenants").select("*", { count: "exact", head: true }),
         supabase.from("products").select("*", { count: "exact", head: true }),
         supabase.from("faqs").select("*", { count: "exact", head: true }),
         supabase.from("chat_messages").select("*", { count: "exact", head: true }),
         supabase.from("handoff_requests").select("*", { count: "exact", head: true }),
-        supabase.from("handoff_requests").select("*", { count: "exact", head: true }).eq("status", "pending")
+        supabase.from("handoff_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("order_intents").select("*", { count: "exact", head: true }),
+        supabase.from("orders").select("*", { count: "exact", head: true })
       ]);
 
       const { data: tenants, error } = await supabase
@@ -330,6 +382,8 @@ function createProviderAdminRouter({ supabase }) {
         faqs_count: faqsResult.count || 0,
         messages_count: messagesResult.count || 0,
         handoffs_count: handoffsResult.count || 0,
+        order_intents_count: orderIntentsResult.count || 0,
+        orders_count: ordersResult.count || 0,
         pending_handoffs: pendingHandoffsResult.count || 0
       };
 
@@ -380,7 +434,7 @@ function createProviderAdminRouter({ supabase }) {
       const tenant = tenantResult.data;
       const snapshot = await buildTenantSnapshot(supabase, tenant);
 
-      const [recentMessagesResult, recentHandoffsResult, topProductsResult, topFaqsResult] = await Promise.all([
+      const [recentMessagesResult, recentHandoffsResult, recentOrderIntentsResult, recentOrdersResult, topProductsResult, topFaqsResult] = await Promise.all([
         supabase
           .from("chat_messages")
           .select("id, session_id, role, content, created_at, tenant_id")
@@ -394,8 +448,20 @@ function createProviderAdminRouter({ supabase }) {
           .order("created_at", { ascending: false })
           .limit(20),
         supabase
+          .from("order_intents")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("orders")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
           .from("products")
-          .select("id,name,price,in_stock,regular_price,discount_percentage,product_url,color")
+          .select("id,name,price,in_stock,regular_price,discount_percentage,product_url,image_url,color")
           .eq("tenant_id", tenantId)
           .order("price", { ascending: false })
           .limit(20),
@@ -410,6 +476,8 @@ function createProviderAdminRouter({ supabase }) {
         tenant: snapshot,
         recent_messages: recentMessagesResult.data || [],
         recent_handoffs: recentHandoffsResult.data || [],
+        recent_order_intents: recentOrderIntentsResult.data || [],
+        recent_orders: recentOrdersResult.data || [],
         products: topProductsResult.data || [],
         faqs: topFaqsResult.data || []
       });

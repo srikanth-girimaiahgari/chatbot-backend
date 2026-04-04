@@ -180,6 +180,28 @@ function countLeadSignals(message) {
   return signals.reduce((total, signal) => total + (normalized.includes(signal) ? 1 : 0), 0);
 }
 
+function parseQuantity(value) {
+  const match = String(value || "").match(/\d+/);
+  const quantity = match ? Number(match[0]) : 1;
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+}
+
+function parsePurchaseIntentPayload(reply) {
+  if (!reply.includes("HANDOFF_READY|")) {
+    return null;
+  }
+
+  const parts = reply.split("HANDOFF_READY|")[1].split("|");
+  return {
+    customerName: parts[0] || "",
+    occasion: parts[1] || "",
+    contactMethod: parts[2] || "",
+    contactDetail: parts[3] || "",
+    productInterest: parts[4] || "",
+    quantity: parseQuantity(parts[5])
+  };
+}
+
 async function notifyLeadOwners(subject, text, tenant) {
   const recipients = Array.from(new Set(
     [tenant.lead_contact_email, tenant.owner_email, process.env.ALERT_EMAIL]
@@ -196,6 +218,150 @@ async function notifyLeadOwners(subject, text, tenant) {
     subject,
     text
   });
+}
+
+async function upsertOrderIntent({ tenant, sessionId, channel, latestMessage, intent }) {
+  try {
+    if (!tenant?.id) {
+      return null;
+    }
+
+    const unresolvedStatuses = ["captured", "contact_collected", "awaiting_payment", "draft"];
+    const now = new Date().toISOString();
+    const payload = {
+      tenant_id: tenant.id,
+      session_id: sessionId,
+      channel,
+      customer_name: intent.customerName || null,
+      occasion: intent.occasion || null,
+      contact_method: intent.contactMethod || null,
+      contact_detail: intent.contactDetail || null,
+      product_interest: intent.productInterest || null,
+      quantity: intent.quantity || 1,
+      source_message: latestMessage,
+      updated_at: now
+    };
+
+    const { data: existingIntent, error: fetchError } = await supabase
+      .from("order_intents")
+      .select("id")
+      .eq("tenant_id", tenant.id)
+      .eq("session_id", sessionId)
+      .in("status", unresolvedStatuses)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    if (existingIntent?.id) {
+      const { data, error } = await supabase
+        .from("order_intents")
+        .update(payload)
+        .eq("id", existingIntent.id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return data;
+    }
+
+    const { data, error } = await supabase
+      .from("order_intents")
+      .insert({
+        ...payload,
+        status: "captured",
+        created_at: now
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Order intent capture error:", error.message);
+    return null;
+  }
+}
+
+async function upsertDraftOrder({ tenant, sessionId, channel, latestMessage, intent, orderIntentId }) {
+  try {
+    if (!tenant?.id) {
+      return null;
+    }
+
+    const unresolvedStatuses = ["draft", "awaiting_payment", "payment_sent"];
+    const now = new Date().toISOString();
+    const payload = {
+      tenant_id: tenant.id,
+      order_intent_id: orderIntentId || null,
+      session_id: sessionId,
+      channel,
+      customer_name: intent.customerName || null,
+      contact_method: intent.contactMethod || null,
+      contact_detail: intent.contactDetail || null,
+      product_interest: intent.productInterest || null,
+      quantity: intent.quantity || 1,
+      source_message: latestMessage,
+      updated_at: now
+    };
+
+    const { data: existingOrder, error: fetchError } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("tenant_id", tenant.id)
+      .eq("session_id", sessionId)
+      .in("status", unresolvedStatuses)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    if (existingOrder?.id) {
+      const { data, error } = await supabase
+        .from("orders")
+        .update(payload)
+        .eq("id", existingOrder.id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return data;
+    }
+
+    const { data, error } = await supabase
+      .from("orders")
+      .insert({
+        ...payload,
+        status: "draft",
+        created_at: now
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Draft order capture error:", error.message);
+    return null;
+  }
 }
 
 async function maybeCreateHotLeadAlert({ sessionId, tenant, latestMessage, recentChats, matchedProducts, channel }) {
@@ -416,25 +582,23 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
     let reply = response.content[0].text;
 
     // Handle handoff trigger
-    if (reply.includes("HANDOFF_READY|")) {
-      const parts = reply.split("HANDOFF_READY|")[1].split("|");
-      await supabase.from("handoff_requests").insert({
-        session_id: senderId,
-        reason: "purchase_intent",
-        status: "pending",
-        customer_name: parts[0] || "",
-        contact_method: parts[2] || "",
-        contact_detail: parts[3] || "",
-        product_interest: parts[4] || "",
-        tenant_id: tenant.id,
+    const orderIntent = parsePurchaseIntentPayload(reply);
+    if (orderIntent) {
+      const savedOrderIntent = await upsertOrderIntent({
+        tenant,
+        sessionId: senderId,
+        channel: "instagram",
+        latestMessage: messageText,
+        intent: orderIntent
       });
-
-      await notifyLeadOwners(
-        `New Instagram Lead — ${parts[0] || tenant.business_name}`,
-        `Name: ${parts[0]}\nProduct: ${parts[4]}\nContact: ${parts[2]} — ${parts[3]}`,
-        tenant
-      );
-
+      await upsertDraftOrder({
+        tenant,
+        sessionId: senderId,
+        channel: "instagram",
+        latestMessage: messageText,
+        intent: orderIntent,
+        orderIntentId: savedOrderIntent?.id
+      });
       reply = applyLeadAvailabilityReply(reply.split("HANDOFF_READY|")[0].trim(), tenant);
     }
 
@@ -566,25 +730,23 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
     let reply = response.content[0].text;
 
     // Handle handoff trigger
-    if (reply.includes("HANDOFF_READY|")) {
-      const parts = reply.split("HANDOFF_READY|")[1].split("|");
-      await supabase.from("handoff_requests").insert({
-        session_id: sessionId,
-        reason: "purchase_intent",
-        status: "pending",
-        customer_name: parts[0] || "",
-        contact_method: parts[2] || "",
-        contact_detail: parts[3] || "",
-        product_interest: parts[4] || "",
-        tenant_id: tenant.id,
+    const orderIntent = parsePurchaseIntentPayload(reply);
+    if (orderIntent) {
+      const savedOrderIntent = await upsertOrderIntent({
+        tenant,
+        sessionId,
+        channel: "whatsapp",
+        latestMessage: messageText,
+        intent: orderIntent
       });
-
-      await notifyLeadOwners(
-        `New WhatsApp Lead — ${parts[0] || tenant.business_name}`,
-        `Name: ${parts[0]}\nProduct: ${parts[4]}\nContact: ${parts[2]} — ${parts[3]}\nWhatsApp: ${senderPhone}`,
-        tenant
-      );
-
+      await upsertDraftOrder({
+        tenant,
+        sessionId,
+        channel: "whatsapp",
+        latestMessage: messageText,
+        intent: orderIntent,
+        orderIntentId: savedOrderIntent?.id
+      });
       reply = applyLeadAvailabilityReply(reply.split("HANDOFF_READY|")[0].trim(), tenant);
     }
 
@@ -718,36 +880,23 @@ app.post("/chat", async (req, res) => {
 
     let reply = response.content[0].text;
 
-    if (reply.includes("HANDOFF_READY|")) {
-      const parts = reply.split("HANDOFF_READY|")[1].split("|");
-      const customerName = parts[0] || "";
-      const businessType = parts[1] || "";
-      const contactMethod = parts[2] || "";
-      const contactDetail = parts[3] || "";
-      const productInterest = parts[4] || "";
-
-      await supabase.from("handoff_requests").insert({
-        session_id,
-        reason: "purchase_intent",
-        status: "pending",
-        customer_name: customerName,
-        business_type: businessType,
-        contact_method: contactMethod,
-        contact_detail: contactDetail,
-        product_interest: productInterest,
+    const orderIntent = parsePurchaseIntentPayload(reply);
+    if (orderIntent) {
+      const savedOrderIntent = await upsertOrderIntent({
+        tenant: { id: null },
+        sessionId,
+        channel: "website",
+        latestMessage: message,
+        intent: orderIntent
       });
-
-      await resend.emails.send({
-        from: "onboarding@resend.dev",
-        to: process.env.ALERT_EMAIL,
-        subject: "New Purchase Lead — " + customerName,
-        text: "Name: " + customerName + "\nBusiness: " + businessType + "\nProduct: " + productInterest + "\nContact: " + contactMethod + " — " + contactDetail,
+      await upsertDraftOrder({
+        tenant: { id: null },
+        sessionId,
+        channel: "website",
+        latestMessage: message,
+        intent: orderIntent,
+        orderIntentId: savedOrderIntent?.id
       });
-
-      if (contactMethod.toLowerCase().includes("phone")) {
-        await connectCall(contactDetail, productInterest);
-      }
-
       reply = reply.split("HANDOFF_READY|")[0].trim();
     }
 

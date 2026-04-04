@@ -271,11 +271,13 @@ async function getConversationSessions(supabase, tenantId) {
 }
 
 async function getClientOverview(supabase, tenant) {
-  const [productsResult, faqsResult, handoffsResult, pendingHandoffsResult, conversationSessions] = await Promise.all([
+  const [productsResult, faqsResult, handoffsResult, pendingHandoffsResult, orderIntentsResult, draftOrdersResult, conversationSessions] = await Promise.all([
     supabase.from("products").select("*", { count: "exact", head: true }).eq("tenant_id", tenant.id),
     supabase.from("faqs").select("*", { count: "exact", head: true }).eq("tenant_id", tenant.id),
     supabase.from("handoff_requests").select("*", { count: "exact", head: true }).eq("tenant_id", tenant.id),
     supabase.from("handoff_requests").select("*", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("status", "pending"),
+    supabase.from("order_intents").select("*", { count: "exact", head: true }).eq("tenant_id", tenant.id),
+    supabase.from("orders").select("*", { count: "exact", head: true }).eq("tenant_id", tenant.id),
     getConversationSessions(supabase, tenant.id)
   ]);
 
@@ -319,6 +321,8 @@ async function getClientOverview(supabase, tenant) {
       active_conversations: activeConversations,
       leads_generated: handoffsResult.count || 0,
       pending_handoffs: pendingHandoffsResult.count || 0,
+      order_intents_count: orderIntentsResult.count || 0,
+      draft_orders_count: draftOrdersResult.count || 0,
       products_count: productsResult.count || 0,
       faqs_count: faqsResult.count || 0
     },
@@ -396,22 +400,63 @@ async function createTenantAccount(supabase, payload) {
 }
 
 async function getClientLeads(supabase, tenantId) {
-  const { data, error } = await supabase
-    .from("handoff_requests")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const [handoffsResult, orderIntentsResult, ordersResult] = await Promise.all([
+    supabase
+      .from("handoff_requests")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase
+      .from("order_intents")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase
+      .from("orders")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(100)
+  ]);
 
-  if (error) {
-    throw error;
+  if (handoffsResult.error) {
+    throw handoffsResult.error;
   }
 
-  return data || [];
+  if (orderIntentsResult.error) {
+    throw orderIntentsResult.error;
+  }
+
+  if (ordersResult.error) {
+    throw ordersResult.error;
+  }
+
+  const handoffs = (handoffsResult.data || []).map((row) => ({
+    ...row,
+    record_type: "handoff",
+    quantity: null
+  }));
+
+  const orderIntents = (orderIntentsResult.data || []).map((row) => ({
+    ...row,
+    record_type: "order_intent"
+  }));
+
+  const draftOrders = (ordersResult.data || []).map((row) => ({
+    ...row,
+    record_type: "draft_order"
+  }));
+
+  return handoffs
+    .concat(orderIntents)
+    .concat(draftOrders)
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 }
 
 async function getClientPerformance(supabase, tenantId) {
-  const [conversationSessions, handoffs, products] = await Promise.all([
+  const [conversationSessions, leads, products] = await Promise.all([
     getConversationSessions(supabase, tenantId),
     getClientLeads(supabase, tenantId),
     supabase
@@ -437,11 +482,13 @@ async function getClientPerformance(supabase, tenantId) {
 
   return {
     total_conversations: conversationSessions.length,
-    leads_generated: handoffs.length,
+    leads_generated: leads.length,
+    order_intents: leads.filter((row) => row.record_type === "order_intent").length,
+    draft_orders: leads.filter((row) => row.record_type === "draft_order").length,
     top_products: topProducts,
     handoff_rate: conversationSessions.length === 0
       ? 0
-      : Number(((handoffs.length / conversationSessions.length) * 100).toFixed(1))
+      : Number(((leads.length / conversationSessions.length) * 100).toFixed(1))
   };
 }
 
@@ -1789,7 +1836,7 @@ function buildClientPortalHtml() {
 
       <section class="panel" data-panel="leads">
         <div class="card">
-          <h3>Generated Leads</h3>
+          <h3>Leads & Order Intents</h3>
           <div id="leads-table"></div>
         </div>
       </section>
@@ -2174,6 +2221,8 @@ function buildClientPortalHtml() {
           ["Conversations", metrics.total_conversations, "Customer conversations tracked for your business"],
           ["Active Conversations", metrics.active_conversations, "Conversations active in the last 7 days"],
           ["Leads Generated", metrics.leads_generated, "Customers who reached a handoff or lead stage"],
+          ["Order Intents", metrics.order_intents_count, "Purchase-ready conversations DigiMaya has structured"],
+          ["Draft Orders", metrics.draft_orders_count, "Draft orders DigiMaya has prepared for checkout"],
           ["Pending Handoffs", metrics.pending_handoffs, "Leads waiting for your team"],
           ["Products", metrics.products_count, "Products available in your catalog"],
           ["FAQs", metrics.faqs_count, "FAQ entries powering DigiMaya replies"]
@@ -2657,8 +2706,10 @@ function buildClientPortalHtml() {
           state.leads,
           [
             { label: "Date", render: (row) => formatDate(row.created_at) },
+            { label: "Type", render: (row) => row.record_type === "order_intent" ? "Order intent" : (row.record_type === "draft_order" ? "Draft order" : "Handoff") },
             { label: "Customer", render: (row) => row.customer_name || row.session_id || "—" },
             { label: "Interest", render: (row) => row.product_interest || "—" },
+            { label: "Qty", render: (row) => row.quantity || "—" },
             { label: "Contact Method", render: (row) => row.contact_method || "—" },
             { label: "Contact", render: (row) => row.contact_detail || "—" },
             { label: "Status", render: (row) => row.status || "—" }
@@ -2673,6 +2724,8 @@ function buildClientPortalHtml() {
           [
             { metric: "Total Conversations", value: state.performance.total_conversations },
             { metric: "Leads Generated", value: state.performance.leads_generated },
+            { metric: "Order Intents", value: state.performance.order_intents || 0 },
+            { metric: "Draft Orders", value: state.performance.draft_orders || 0 },
             { metric: "Handoff Rate", value: state.performance.handoff_rate + "%" }
           ].concat((state.performance.top_products || []).map((row) => ({
             metric: "Top Product: " + row.name,

@@ -81,6 +81,8 @@
       ["Products", summary.products_count, "Catalog entries across all tenants"],
       ["FAQs", summary.faqs_count, "Knowledge base entries across all tenants"],
       ["Messages", summary.messages_count, "Tracked messages currently in the backend"],
+      ["Order Intents", summary.order_intents_count || 0, "Purchase-ready conversations DigiMaya has structured"],
+      ["Draft Orders", summary.orders_count || 0, "Draft orders DigiMaya has already prepared"],
       ["Pending Handoffs", summary.pending_handoffs, "Customer conversations waiting for manual follow-up"]
     ];
 
@@ -135,7 +137,7 @@
         { label: "Health", render: (tenant) => '<span class="status-pill ' + tenant.health.status + '">' + tenant.health.status.replace(/_/g, " ") + '</span><div class="subtext">' + (tenant.health.warnings.join(", ") || "No warnings") + '</div>' },
         { label: "Catalog", render: (tenant) => tenant.catalog.productsCount + ' products<br />' + tenant.catalog.faqsCount + ' FAQs' },
         { label: "Messages", render: (tenant) => tenant.messages.inboundCount + ' inbound<br />' + tenant.messages.outboundCount + ' replies' },
-        { label: "Handoffs", render: (tenant) => tenant.handoffs.pendingHandoffs + ' pending<br />' + tenant.handoffs.totalHandoffs + ' total' },
+        { label: "Execution", render: (tenant) => (tenant.order_intents.totalOrderIntents || 0) + ' order intents<br />' + (tenant.orders.totalOrders || 0) + ' draft orders' },
         { label: "Last Activity", render: (tenant) => formatDate(tenant.messages.lastInboundAt || tenant.messages.lastReplyAt) }
       ],
       "No tenants found."
@@ -181,6 +183,8 @@
         renderDetailChip("Health", tenant.health.status.replace(/_/g, " ")) +
         renderDetailChip("Products", tenant.catalog.productsCount) +
         renderDetailChip("FAQs", tenant.catalog.faqsCount) +
+        renderDetailChip("Order Intents", tenant.order_intents.totalOrderIntents || 0) +
+        renderDetailChip("Draft Orders", tenant.orders.totalOrders || 0) +
         renderDetailChip("Pending Handoffs", tenant.handoffs.pendingHandoffs) +
         renderDetailChip("Inbound", tenant.messages.inboundCount) +
         renderDetailChip("Replies", tenant.messages.outboundCount) +
@@ -199,6 +203,27 @@
           { label: "Role", render: (row) => row.role },
           { label: "Content", render: (row) => escapeHtml(String(row.content || "")).slice(0, 180) }
         ], "No recent messages with tenant attribution yet.") +
+      '</div>' +
+      '<div class="detail-section">' +
+        '<h4>Recent Order Intents</h4>' +
+        buildMiniTable(payload.recent_order_intents, [
+          { label: "When", render: (row) => formatDate(row.created_at) },
+          { label: "Customer", render: (row) => escapeHtml(String(row.customer_name || row.session_id || "—")) },
+          { label: "Product", render: (row) => escapeHtml(String(row.product_interest || "—")) },
+          { label: "Qty", render: (row) => row.quantity || "—" },
+          { label: "Status", render: (row) => row.status || "—" }
+        ], "No structured order intents for this tenant yet.") +
+      '</div>' +
+      '<div class="detail-section">' +
+        '<h4>Recent Draft Orders</h4>' +
+        buildMiniTable(payload.recent_orders, [
+          { label: "When", render: (row) => formatDate(row.created_at) },
+          { label: "Order Ref", render: (row) => escapeHtml(String(row.order_reference || "—")) },
+          { label: "Customer", render: (row) => escapeHtml(String(row.customer_name || row.session_id || "—")) },
+          { label: "Product", render: (row) => escapeHtml(String(row.product_interest || "—")) },
+          { label: "Qty", render: (row) => row.quantity || "—" },
+          { label: "Status", render: (row) => row.status || "—" }
+        ], "No draft orders for this tenant yet.") +
       '</div>' +
       '<div class="detail-section">' +
         '<h4>Recent Handoffs</h4>' +
