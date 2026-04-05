@@ -399,7 +399,7 @@
       </div>
     </article>
 
-    <h2 class="section-title">Current Development Step</h2>
+    <h2 class="section-title">Digital Employee Milestones</h2>
 
     <article class="entry">
       <div class="entry-head">
@@ -408,7 +408,7 @@
           <h3 class="entry-title">Structured order intents</h3>
           <div class="entry-sub">This is the first step where DigiMaya starts acting like a digital employee, not just a pre-sales assistant. Purchase-ready conversations are turned into structured business records.</div>
         </div>
-        <span class="status-pill status-dev">In Development</span>
+        <span class="status-pill status-live">Live</span>
       </div>
 
       <div class="logic-box">
@@ -426,21 +426,20 @@
           </ul>
         </div>
         <div class="note-card">
-          <h3>What has been built so far</h3>
+          <h3>What went live</h3>
           <ul>
             <li>New <code>order_intents</code> SQL migration.</li>
             <li>Instagram and WhatsApp purchase-intent capture into structured records.</li>
             <li>Admin and client dashboard visibility for order-intent counts and lists.</li>
-            <li>Draft-order layer has now been started on top of order intents.</li>
+            <li>Draft-order layer now runs on top of order intents.</li>
           </ul>
         </div>
         <div class="note-card">
-          <h3>What is not live yet</h3>
+          <h3>What changed from the idea</h3>
           <ul>
-            <li>No payment links yet.</li>
-            <li>No order confirmation yet.</li>
-            <li>No stock deduction yet.</li>
-            <li>This step still needs to be pushed live after testing.</li>
+            <li>Order intent replaced the old idea of loose lead handoff for purchase-ready conversations.</li>
+            <li>Seller notification is no longer the normal destination for a standard buying flow.</li>
+            <li>Payments are still intentionally held back until the ownership model is clear.</li>
           </ul>
         </div>
       </div>
@@ -453,7 +452,7 @@
           <h3 class="entry-title">Draft orders from purchase-ready DMs</h3>
           <div class="entry-sub">The next logical move after order intent is to let DigiMaya prepare a real draft order. This is the first point where the system begins organizing an actual transaction object, even before payment is added.</div>
         </div>
-        <span class="status-pill status-dev">In Development</span>
+        <span class="status-pill status-live">Live</span>
       </div>
 
       <div class="logic-box">
@@ -471,21 +470,65 @@
           </ul>
         </div>
         <div class="note-card">
-          <h3>What has been built so far</h3>
+          <h3>What went live</h3>
           <ul>
             <li>New <code>orders</code> SQL migration for draft orders.</li>
             <li>Automatic draft-order creation from structured order intents.</li>
             <li>Admin and client dashboard metrics for draft orders.</li>
-            <li>Draft orders are now being enriched toward payment-readiness with matched product, currency, and amount fields.</li>
-            <li>The model is now being corrected from single-product orders toward cart-style order items.</li>
+            <li>Draft orders are enriched with matched product, currency, and amount fields when a clear product match exists.</li>
+            <li>The model was corrected from single-product orders toward cart-style order items.</li>
+            <li>Multi-item pricing now uses separate order items instead of multiplying one unit price across different products.</li>
           </ul>
         </div>
         <div class="note-card">
-          <h3>What is not live yet</h3>
+          <h3>What changed from the idea</h3>
           <ul>
-            <li>No payment gateway is attached yet.</li>
-            <li>No paid order state or fulfillment flow yet.</li>
-            <li>This step also still needs to be pushed live after testing.</li>
+            <li>The first order model was too simple because it assumed one product per order.</li>
+            <li>The correct commerce shape became: one order header, many order items.</li>
+            <li>Payment-link generation is still held back even though payment-ready fields now exist.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Digital Employee Step 3</div>
+          <h3 class="entry-title">Payment-link automation is prepared but intentionally paused</h3>
+          <div class="entry-sub">The next layer is to turn a valid draft order into an external payment link. The code path has been explored locally, but this is the first high-risk money step, so it is being held until payment-account ownership is defined correctly for multiple clients.</div>
+        </div>
+        <span class="status-pill status-dev">Held</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        DigiMaya should never collect money into the wrong account. Before payment links go live, each business must have a clear payment-owner model so customer money goes to the correct merchant, not into an operational gray area.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>Create payment links from safe draft orders.</li>
+            <li>Send the link back in the DM conversation.</li>
+            <li>Move DigiMaya from order preparation into real checkout execution.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What is prepared so far</h3>
+          <ul>
+            <li>Draft orders now carry payment-ready fields like amount, currency, and payment status.</li>
+            <li>The next payment-link code path has already been explored locally with Razorpay.</li>
+            <li>The team now understands that payment must be tied to the correct business owner, not one shared account.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>Why it is held</h3>
+          <ul>
+            <li>Multi-client payment ownership must be designed correctly first.</li>
+            <li>Each business should ideally own its own payment account.</li>
+            <li>Money-handling mistakes are a much bigger risk than messaging mistakes.</li>
           </ul>
         </div>
       </div>

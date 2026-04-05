@@ -1,263 +1,304 @@
-# 🤖 Chatbot Backend — AI-Powered Digital Products Assistant
+# DigiMaya
 
-A production-ready AI chatbot backend for a digital products business targeting physical product sellers. Built with Node.js, deployed on Railway, powered by Claude AI.
+DigiMaya is a multi-tenant AI system for online product businesses. Its job is to handle Instagram DMs, use each business's own catalog and FAQs, qualify buying intent, and now turn purchase-ready conversations into structured draft orders.
 
----
+## 20% Logic
 
-## 📌 Project Status
+The simplest way to understand DigiMaya is this:
 
-| Item | Status |
-|------|--------|
-| Deployment | ✅ Live on Railway |
-| All Features | ✅ Passing |
-| Git Branches | `main` (production) + `development` |
-| Monthly Cost | ~$1–5 (testing) |
+- Instagram is the customer conversation lane
+- DigiMaya is the digital employee working inside that lane
+- each client keeps their own business data, catalog, and rules
+- the system is moving from "replying to DMs" to "operating the sales flow"
 
-**Live URL:** `https://chatbot-backend-production-c000.up.railway.app`
+Right now DigiMaya already handles:
 
----
+- tenant-specific DM replies
+- client onboarding and settings
+- provider monitoring
+- hot lead and anti-loop protection
+- structured order intents
+- draft orders
+- multi-item order lines
 
-## ✨ Features
+What is deliberately paused:
 
-### Core Chatbot
-- AI-powered responses using Claude Sonnet API
-- Full conversation context — last 6 messages sent with every request
-- Product search from live Supabase database
-- FAQ matching before calling AI (cost optimisation)
-- Short, precise responses (max 200 tokens)
+- live payment-link generation
+- payment confirmation webhooks
+- stock deduction after payment
 
-### Human Handoff
-- Detects trigger phrases: "talk to a human", "human agent", etc.
-- Logs request to `handoff_requests` table in Supabase
-- Sends instant email alert via Resend API
+That pause is intentional. Payment is the highest-risk layer, so the product is being built in the right order: conversation first, order structure second, money third.
 
-### Purchase Flow
-- Detects purchase intent from 15+ trigger phrases
-- Offers 4 contact method options: WhatsApp, Text, Phone, Email
-- Validates phone numbers using **libphonenumber-js** (Google standard)
-- Validates email addresses using RFC-compliant regex
-- Handles change of mind — customer can switch method at any point
-- For phone calls: collects preferred call time separately
-- Saves all contact details to `handoff_requests` table
-- Sends agent email alert with customer contact details
+## What Is Live Today
 
----
+- Multi-tenant Instagram DM routing
+- Tenant-specific product and FAQ replies
+- Provider admin dashboard
+- Google Sheets export for operational review
+- Client portal with signup, login, onboarding, and settings
+- Editable catalog and FAQ management
+- Currency-aware product pricing
+- Hot lead alerts
+- Anti-loop protection
+- Product links and image URLs
+- Bulk product import
+- Structured `order_intents`
+- Draft `orders`
+- Multi-item `order_items`
 
-## 🧱 Tech Stack
+## What Is In Development
 
-| Package | Purpose |
-|---------|---------|
-| `express` | REST API framework |
-| `@supabase/supabase-js` | Database connector |
-| `@anthropic-ai/sdk` | Claude AI connector |
-| `resend` | Email delivery |
-| `libphonenumber-js` | Phone number validation (Google standard) |
-| `dotenv` | Environment variable management |
-| `cors` | Cross-origin resource sharing |
+- Payment-link generation from draft orders
+- Payment confirmation and paid-order state
+- Exception-only escalation for non-standard orders
 
----
+## Product Shape
 
-## 🗄️ Database Tables (Supabase)
+DigiMaya is not being built as "another website chat tool."
 
-| Table | Purpose |
-|-------|---------|
-| `products` | Digital product catalog with pricing and stock |
-| `faqs` | Pre-written question and answer pairs |
-| `chat_messages` | Full conversation history per session |
-| `handoff_requests` | Human agent queue with contact details |
+The product wedge is:
 
-### handoff_requests columns:
-`id`, `session_id`, `reason`, `status`, `whatsapp`, `product_interest`, `contact_method`, `contact_detail`, `preferred_time`, `created_at`
+- DM-first
+- commerce-first
+- multi-business
+- digital-employee behavior
 
----
+That means DigiMaya is strongest when it can do normal business work without the owner stepping in every time.
 
-## 🔌 API Endpoints
+## Core User Flows
 
-### Health Check
-```
-GET /
-```
-Returns server status.
+### 1. Business onboarding
 
----
+Client can:
 
-### Product Search
-```
-GET /products?search=keyword
-```
-Searches the product catalog by keyword.
+- sign up
+- log in
+- add business profile
+- set working hours
+- add products
+- add FAQs
+- request Instagram setup help
 
----
+### 2. Customer conversation
 
-### Chat
-```
-POST /chat
-```
-Main chatbot endpoint.
+When a customer messages on Instagram:
 
-**Request:**
-```json
-{
-  "message": "do you offer refunds?",
-  "session_id": "unique-session-id"
-}
-```
+1. Meta sends the message to DigiMaya
+2. DigiMaya finds the correct tenant
+3. DigiMaya loads that tenant's products, FAQs, and business rules
+4. MAYA replies using the tenant's own information
+5. if the conversation becomes purchase-ready, DigiMaya creates:
+   - `order_intent`
+   - `order`
+   - `order_items` when multiple products are involved
 
-**Response:**
-```json
-{
-  "reply": "Yes we offer a 7-day money back guarantee on all products."
-}
-```
+### 3. Provider operations
 
-**Processing order:**
-1. Save user message to `chat_messages`
-2. Check for human handoff triggers
-3. Check for existing purchase flow (contact method → contact detail → call time)
-4. Check for new purchase intent
-5. Load all products + FAQs from Supabase
-6. Load last 6 messages for conversation context
-7. Call Claude API with full context
-8. Save reply to `chat_messages`
-9. Return reply
+The provider dashboard shows:
 
----
+- tenant health
+- catalog and FAQ counts
+- message activity
+- handoffs
+- order-intent counts
+- draft-order counts
 
-### Handoff Queue
-```
-GET /handoff
-```
-Returns all pending human handoff requests.
+## Current Commerce Model
 
----
+### Order intent
 
-## 🛒 Purchase Flow
+When a buying conversation becomes clear enough, DigiMaya captures:
 
-```
-Customer: "I want to buy Inventory Tracker Pro"
-Bot:  "How would you prefer our team to contact you?
-       1. WhatsApp  2. Text  3. Phone  4. Email"
+- customer name
+- occasion
+- contact method
+- contact detail
+- product interest
+- quantity
 
-Customer: "1"
-Bot:  "Please share your WhatsApp number with country code, e.g. +91 9876543210"
+That becomes a structured `order_intent`.
 
-Customer: "+91 9876543210"   ← validated by libphonenumber-js
-Bot:  "Thank you! Our team will message you on WhatsApp within minutes!"
-Agent: receives email with contact details
-```
+### Draft order
 
-**Change of mind:** Customer can type 1, 2, 3 or 4 at any point to switch contact method.
+Then DigiMaya creates a draft `order`.
 
----
+The order stores:
 
-## ⚙️ Environment Variables
+- order reference
+- tenant
+- customer details
+- product interest
+- quantity
+- payment readiness fields
+
+### Multi-item order lines
+
+Real online buyers often want more than one item. Because of that, DigiMaya now uses:
+
+- `orders` as the order header
+- `order_items` as the individual cart lines
+
+This avoids the old mistake of treating three different products as one product with quantity three.
+
+## Tech Stack
+
+- `Node.js`
+- `Express`
+- `Supabase`
+- `Anthropic`
+- `Resend`
+- `Railway`
+- `Google Apps Script` for Sheets sync
+
+## Main Tables
+
+### Existing operating tables
+
+- `tenants`
+- `products`
+- `faqs`
+- `chat_messages`
+- `handoff_requests`
+
+### Digital-employee commerce tables
+
+- `order_intents`
+- `orders`
+- `order_items`
+
+## Important Routes
+
+### Public / channel routes
+
+- `GET /`
+- `GET /webhook`
+- `POST /webhook`
+- `POST /whatsapp/webhook`
+- `POST /chat`
+
+### Client portal
+
+- `GET /client`
+- `GET /client/overview`
+- `GET /client/conversations`
+- `GET /client/leads`
+- `GET /client/performance`
+
+### Provider admin
+
+- `GET /admin/dashboard`
+- `GET /admin/overview`
+- `GET /admin/tenants`
+- `GET /admin/tenants/:tenantId`
+- `GET /admin/exports/google-sheets`
+
+## Environment Variables
+
+Core app:
 
 ```env
-SUPABASE_URL=https://xxxxxx.supabase.co
-SUPABASE_KEY=sb_publishable_xxxxxx
-ANTHROPIC_API_KEY=sk-ant-api03-xxxxxx
-ALERT_EMAIL=your@gmail.com
-RESEND_API_KEY=re_xxxxxx
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+ANTHROPIC_API_KEY=
+ADMIN_API_TOKEN=
+CLIENT_PORTAL_SECRET=
+VERIFY_TOKEN=
 PORT=3000
 ```
 
-> ⚠️ Never commit `.env` to GitHub. It is listed in `.gitignore`.
+Email / alerts:
 
----
+```env
+RESEND_API_KEY=
+ALERT_EMAIL=
+```
 
-## 🚀 Local Setup
+Optional or future payment layer:
+
+```env
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+```
+
+Important:
+
+- `.env` should never be committed
+- client-specific secrets should not go in `.env`
+- if DigiMaya later connects client payment accounts, those should be stored per tenant, server-side only
+
+## Local Setup
 
 ```bash
-git clone git@github.com:yourusername/chatbot-backend.git
+git clone <repo-url>
 cd chatbot-backend
 npm install
-# Create .env and fill in your values
+```
+
+Create `.env`, then run:
+
+```bash
 node index.js
 ```
 
-Server runs on `http://localhost:3000`
+## Branch Workflow
 
----
+Development happens on:
 
-## 🌿 Git Workflow
+- `development`
 
-```bash
-# Always develop on development branch
-git checkout development
+Production deploys from:
 
-# After testing locally — merge to main
-git checkout main
-git merge development
-git push origin main
-# Railway auto-deploys from main
-```
+- `main`
 
----
+Recommended flow:
 
-## ☁️ Deployment
+1. build and test on `development`
+2. verify behavior
+3. merge to `main`
+4. Railway deploys from `main`
 
-Deployed on **Railway** via GitHub integration. Every push to `main` triggers automatic redeployment.
+## SQL Migrations Added During DigiMaya Growth
 
-Environment variables are stored in Railway Variables dashboard — never in code.
+Important recent SQL files:
 
----
+- `sql/client-portal-onboarding.sql`
+- `sql/digimaya-order-intents.sql`
+- `sql/digimaya-draft-orders.sql`
+- `sql/digimaya-payment-ready-orders.sql`
+- `sql/digimaya-order-items.sql`
 
-## 🧪 Test Results
+Run these in Supabase SQL Editor when introducing the matching feature.
 
-| Feature | Status |
-|---------|--------|
-| Health check | ✅ Passing |
-| Product search | ✅ Passing |
-| FAQ matching | ✅ Passing |
-| Claude AI responses | ✅ Passing |
-| Conversation context | ✅ Passing |
-| Human handoff (Supabase) | ✅ Passing |
-| Human handoff (Email) | ✅ Passing |
-| Purchase intent detection | ✅ Passing |
-| WhatsApp contact flow | ✅ Passing |
-| Text message contact flow | ✅ Passing |
-| Phone call + preferred time flow | ✅ Passing |
-| Email contact flow | ✅ Passing |
-| Phone validation (libphonenumber) | ✅ Passing |
-| Email validation (regex) | ✅ Passing |
-| Change of mind handling | ✅ Passing |
+## Operational Notes
 
----
+- Google Sheets sync is now best treated as a reporting layer, not the source of truth
+- provider dashboard is the operational control room
+- website chat is not a current priority
+- WhatsApp is intentionally held behind Instagram while business ownership and Meta setup are clarified
 
-## 🗺️ Roadmap
+## Honest Product Status
 
-- [x] Phase 1 — Accounts and tools setup
-- [x] Phase 2 — Database setup (Supabase)
-- [x] Phase 3 — Backend API (Railway)
-- [x] Phase 4 — Chat widget UI (Vercel)
-- [x] Phase 5 — Full system testing
-- [ ] Phase 6 — Replace dummy data with real products
-- [ ] Phase 7 — Custom domain
-- [ ] Phase 8 — Production security lockdown
-- [ ] Phase 9 — Cost optimisation (caching)
-- [ ] Phase 10 — Agent dashboard
+DigiMaya is already operational as:
 
----
+- a multi-tenant Instagram DM system
+- a client onboarding platform
+- a provider operations platform
+- an early commerce operator through order intents and draft orders
 
-## 📁 Project Structure
+DigiMaya is not yet fully operational as:
 
-```
-chatbot-backend/
-├── index.js          # Main backend application
-├── package.json      # Project dependencies
-├── package-lock.json # Dependency lock file
-├── .gitignore        # Excludes .env and node_modules
-└── .env              # Secret keys (never committed)
-```
+- a complete payment-handling digital employee
+- a post-payment fulfillment engine
+- a full online business operating system
 
----
+That is the right state for now. The foundation is real, and the next layers are being added carefully instead of being rushed.
 
-## 🔗 Related Repository
+## Documentation
 
-- [chatbot-widget](https://github.com/yourusername/chatbot-widget) — Chat widget UI on Vercel
+Project documentation lives in:
 
----
+- `docs/DigiMaya_Guide.html`
+- `docs/DigiMaya_Build_Log.html`
+- `docs/DigiMaya_Behind_The_Scenes.html`
 
-## 📄 License
-
-MIT
+The build log should be updated whenever a meaningful product step changes from idea to live behavior.
