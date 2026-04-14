@@ -1,5 +1,12 @@
 const express = require("express");
 const path = require("path");
+const {
+  fetchTenantShopifyProducts,
+  createTenantShopifyCartFromOrder,
+  createTenantShopifyCartFromIntent,
+  updateTenantShopifyCartFromOrder,
+  getTenantShopifyCheckoutUrl
+} = require("./shopify-service");
 
 function formatTimestamp(value) {
   return value || null;
@@ -201,6 +208,12 @@ async function buildTenantSnapshot(supabase, tenant) {
     created_at: formatTimestamp(tenant.created_at),
     instagram_connected: Boolean(tenant.ig_business_id && tenant.ig_access_token),
     whatsapp_connected: Boolean(tenant.wa_phone_number_id && tenant.wa_access_token),
+    shopify_connected: Boolean(tenant.shopify_store_domain && tenant.shopify_storefront_access_token),
+    shopify_store_domain: tenant.shopify_store_domain || null,
+    shopify_connection_status: tenant.shopify_connection_status || "not_connected",
+    shopify_webhook_status: tenant.shopify_webhook_status || "not_configured",
+    shopify_connected_at: formatTimestamp(tenant.shopify_connected_at),
+    shopify_last_webhook_at: formatTimestamp(tenant.shopify_last_webhook_at),
     catalog: catalogCounts,
     messages: messageMetrics,
     handoffs: handoffMetrics,
@@ -466,7 +479,7 @@ function createProviderAdminRouter({ supabase }) {
           .limit(50),
         supabase
           .from("products")
-          .select("id,name,price,in_stock,regular_price,discount_percentage,product_url,image_url,color")
+          .select("id,name,price,in_stock,regular_price,discount_percentage,product_url,image_url,color,shopify_product_gid,shopify_variant_gid,shopify_inventory_item_gid,shopify_synced_at")
           .eq("tenant_id", tenantId)
           .order("price", { ascending: false })
           .limit(20),
@@ -562,6 +575,237 @@ function createProviderAdminRouter({ supabase }) {
       }
 
       res.json({ messages: data || [] });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get("/tenants/:tenantId/shopify/config", async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+      const { data, error } = await supabase
+        .from("tenants")
+        .select("id,business_name,shopify_store_domain,shopify_connection_status,shopify_webhook_status,shopify_connected_at,shopify_last_sync_at,shopify_last_webhook_at,shopify_default_location_gid,shopify_storefront_access_token,shopify_admin_access_token,shopify_webhook_secret")
+        .eq("id", tenantId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      res.json({
+        tenant_id: data.id,
+        business_name: data.business_name,
+        shopify_store_domain: data.shopify_store_domain || null,
+        shopify_connection_status: data.shopify_connection_status || "not_connected",
+        shopify_webhook_status: data.shopify_webhook_status || "not_configured",
+        shopify_connected_at: formatTimestamp(data.shopify_connected_at),
+        shopify_last_sync_at: formatTimestamp(data.shopify_last_sync_at),
+        shopify_last_webhook_at: formatTimestamp(data.shopify_last_webhook_at),
+        shopify_default_location_gid: data.shopify_default_location_gid || null,
+        storefront_token_configured: Boolean(data.shopify_storefront_access_token),
+        admin_token_configured: Boolean(data.shopify_admin_access_token),
+        webhook_secret_configured: Boolean(data.shopify_webhook_secret)
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.patch("/tenants/:tenantId/shopify/config", async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+      const updates = {};
+      const allowedFields = [
+        "shopify_store_domain",
+        "shopify_storefront_access_token",
+        "shopify_admin_access_token",
+        "shopify_webhook_secret",
+        "shopify_connection_status",
+        "shopify_webhook_status",
+        "shopify_default_location_gid"
+      ];
+
+      allowedFields.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+          updates[field] = req.body[field];
+        }
+      });
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "No Shopify config fields were provided" });
+      }
+
+      const hasStoreConnection =
+        (typeof updates.shopify_store_domain === "string" ? updates.shopify_store_domain : undefined) ||
+        (typeof updates.shopify_storefront_access_token === "string" ? updates.shopify_storefront_access_token : undefined);
+
+      if (hasStoreConnection) {
+        updates.shopify_connected_at = new Date().toISOString();
+        if (!updates.shopify_connection_status) {
+          updates.shopify_connection_status = "configured";
+        }
+      }
+
+      const { data, error } = await supabase
+        .from("tenants")
+        .update(updates)
+        .eq("id", tenantId)
+        .select("id,business_name,shopify_store_domain,shopify_connection_status,shopify_webhook_status,shopify_connected_at,shopify_last_webhook_at,shopify_default_location_gid,shopify_storefront_access_token,shopify_admin_access_token,shopify_webhook_secret")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({
+        tenant_id: data.id,
+        business_name: data.business_name,
+        shopify_store_domain: data.shopify_store_domain || null,
+        shopify_connection_status: data.shopify_connection_status || "not_connected",
+        shopify_webhook_status: data.shopify_webhook_status || "not_configured",
+        shopify_connected_at: formatTimestamp(data.shopify_connected_at),
+        shopify_last_webhook_at: formatTimestamp(data.shopify_last_webhook_at),
+        shopify_default_location_gid: data.shopify_default_location_gid || null,
+        storefront_token_configured: Boolean(data.shopify_storefront_access_token),
+        admin_token_configured: Boolean(data.shopify_admin_access_token),
+        webhook_secret_configured: Boolean(data.shopify_webhook_secret)
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.patch("/tenants/:tenantId/products/:productId/shopify-mapping", async (req, res) => {
+    try {
+      const { tenantId, productId } = req.params;
+      const updates = {};
+      const allowedFields = [
+        "shopify_product_gid",
+        "shopify_variant_gid",
+        "shopify_inventory_item_gid"
+      ];
+
+      allowedFields.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+          updates[field] = req.body[field];
+        }
+      });
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "No Shopify mapping fields were provided" });
+      }
+
+      updates.shopify_synced_at = new Date().toISOString();
+
+      const { data, error } = await supabase
+        .from("products")
+        .update(updates)
+        .eq("tenant_id", tenantId)
+        .eq("id", productId)
+        .select("id,tenant_id,name,shopify_product_gid,shopify_variant_gid,shopify_inventory_item_gid,shopify_synced_at")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ product: data });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get("/tenants/:tenantId/shopify/products", async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+      const result = await fetchTenantShopifyProducts({
+        supabase,
+        tenantId,
+        limit: req.query.limit
+      });
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/tenants/:tenantId/shopify/carts/from-order/:orderId", async (req, res) => {
+    try {
+      const { tenantId, orderId } = req.params;
+      const result = await createTenantShopifyCartFromOrder({
+        supabase,
+        tenantId,
+        orderId,
+        sessionId: req.body?.session_id,
+        channel: req.body?.channel
+      });
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/tenants/:tenantId/shopify/carts/from-intent", async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+      const productInterest = String(req.body?.product_interest || "").trim();
+      const quantity = Number(req.body?.quantity || 1);
+
+      if (!productInterest) {
+        return res.status(400).json({
+          error: "product_interest is required"
+        });
+      }
+
+      const result = await createTenantShopifyCartFromIntent({
+        supabase,
+        tenantId,
+        orderId: req.body?.order_id || null,
+        sessionId: req.body?.session_id || null,
+        channel: req.body?.channel || "instagram",
+        productInterest,
+        quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1
+      });
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.patch("/tenants/:tenantId/shopify/carts/:cartId/from-order/:orderId", async (req, res) => {
+    try {
+      const { tenantId, cartId, orderId } = req.params;
+      const result = await updateTenantShopifyCartFromOrder({
+        supabase,
+        tenantId,
+        localCartId: cartId,
+        orderId
+      });
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get("/tenants/:tenantId/shopify/carts/:cartId/checkout", async (req, res) => {
+    try {
+      const { tenantId, cartId } = req.params;
+      const result = await getTenantShopifyCheckoutUrl({
+        supabase,
+        tenantId,
+        localCartId: cartId
+      });
+
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
