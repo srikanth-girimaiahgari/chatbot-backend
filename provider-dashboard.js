@@ -183,6 +183,8 @@
         renderDetailChip("Health", tenant.health.status.replace(/_/g, " ")) +
         renderDetailChip("Products", tenant.catalog.productsCount) +
         renderDetailChip("FAQs", tenant.catalog.faqsCount) +
+        renderDetailChip("Shopify", tenant.shopify_connected ? "connected" : "not connected") +
+        renderDetailChip("Shopify Webhooks", String(tenant.shopify_webhook_status || "not_configured").replaceAll("_", " ")) +
         renderDetailChip("Order Intents", tenant.order_intents.totalOrderIntents || 0) +
         renderDetailChip("Draft Orders", tenant.orders.totalOrders || 0) +
         renderDetailChip("Pending Handoffs", tenant.handoffs.pendingHandoffs) +
@@ -193,6 +195,9 @@
         renderMetaCard("Owner", tenant.owner_name || "Not provided") +
         renderMetaCard("Login Email", tenant.owner_email || "Not provided") +
         renderMetaCard("Onboarding", String(tenant.onboarding_status || "signup_pending").replaceAll("_", " ")) +
+        renderMetaCard("Shopify Store", tenant.shopify_store_domain || "Not connected") +
+        renderMetaCard("Shopify Status", String(tenant.shopify_connection_status || "not_connected").replaceAll("_", " ")) +
+        renderMetaCard("Last Shopify Webhook", formatDate(tenant.shopify_last_webhook_at)) +
         renderMetaCard("Created", formatDate(tenant.created_at)) +
       '</div>' +
       '<div class="subtext">Warnings: ' + (tenant.health.warnings.join(", ") || "No warnings") + '</div>' +
@@ -252,7 +257,8 @@
           { label: "Product", render: (row) => escapeHtml(row.name) },
           { label: "Price", render: (row) => row.price },
           { label: "Stock", render: (row) => row.in_stock ? "In stock" : "Out of stock" },
-          { label: "Link", render: (row) => row.product_url ? '<a href="' + row.product_url + '" target="_blank" rel="noreferrer">Open</a>' : "—" }
+          { label: "Link", render: (row) => row.product_url ? '<a href="' + row.product_url + '" target="_blank" rel="noreferrer">Open</a>' : "—" },
+          { label: "Shopify Variant", render: (row) => row.shopify_variant_gid ? escapeHtml(String(row.shopify_variant_gid)).slice(-18) : "—" }
         ], "No products loaded for this tenant.") +
       '</div>';
 
