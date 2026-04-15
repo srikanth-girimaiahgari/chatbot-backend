@@ -534,6 +534,142 @@
       </div>
     </article>
 
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Digital Employee Step 4</div>
+          <h3 class="entry-title">Shopify foundation starts with schema, not prompts</h3>
+          <div class="entry-sub">The next expansion is Shopify, but the first serious step is not teaching MAYA new words. It is giving DigiMaya the right tenant-level store connection fields, product-to-variant mapping, cart tracking, and webhook audit structure so the backend can be tested cleanly before AI is wired into it.</div>
+        </div>
+        <span class="status-pill status-dev">In Development</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        Shopify checkout depends on one key truth: DigiMaya cannot add a product to a Shopify cart unless it knows the correct Shopify variant for that tenant. That makes schema design the real first step, not conversation design.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>Connect DigiMaya to Shopify one step at a time.</li>
+            <li>Keep MAYA decoupled from raw Shopify API logic.</li>
+            <li>Make cart and checkout work per tenant, not as one shared store shortcut.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What is built first</h3>
+          <ul>
+            <li>Tenant-level Shopify connection fields.</li>
+            <li>Product-to-Shopify variant mapping fields.</li>
+            <li><code>shopify_carts</code> and <code>shopify_cart_items</code> tables.</li>
+            <li><code>shopify_webhook_events</code> table so later HMAC-verified webhooks have a proper audit path.</li>
+            <li>An isolated Shopify backend service for fetch products, create cart, update cart, and get checkout URL.</li>
+            <li>Protected admin endpoints to test Shopify calls without involving MAYA yet.</li>
+            <li>A Shopify webhook verification scaffold that can reject fake events and log verified ones.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What is intentionally untouched</h3>
+          <ul>
+            <li>No MAYA prompt change yet.</li>
+            <li>No Shopify API calls wired into production flow yet.</li>
+            <li>No checkout execution yet.</li>
+            <li>No webhook closure yet.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Digital Employee Step 5</div>
+          <h3 class="entry-title">MAYA now asks for checkout in structured intent, not raw Shopify logic</h3>
+          <div class="entry-sub">This is the first shopping-behavior layer. MAYA can now signal checkout intent in structured JSON, but the backend still decides whether Shopify checkout is actually possible. That keeps the AI layer decoupled from store API details.</div>
+        </div>
+        <span class="status-pill status-dev">In Development</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        If Shopify API details live inside the prompt, every store change becomes a prompt problem. If MAYA only describes intent and the backend executes it, DigiMaya stays maintainable.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we intended</h3>
+          <ul>
+            <li>Let MAYA behave like a shopping employee.</li>
+            <li>Keep MAYA decoupled from Shopify API changes.</li>
+            <li>Use structured intent, not hard-coded checkout instructions in natural language.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What is built so far</h3>
+          <ul>
+            <li>MAYA can now end with <code>SHOPPING_INTENT_JSON</code> when Shopify checkout is available for the tenant.</li>
+            <li>The backend parses that JSON and decides whether to create a Shopify checkout.</li>
+            <li>Shopify checkout now resolves products directly from Shopify catalog data instead of relying on local Supabase product mapping as the primary path.</li>
+            <li>DigiMaya still syncs the resulting Shopify cart back into local orders and order items for operations visibility.</li>
+            <li>The old order-intent flow stays in place as the fallback.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What is intentionally still missing</h3>
+          <ul>
+            <li>No production Shopify checkout has been proven yet because there is still no real store connected.</li>
+            <li>No customer-facing fulfillment or paid-order confirmation yet.</li>
+            <li>No Shopify order-completion logic off webhook topics yet.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+    <article class="entry">
+      <div class="entry-head">
+        <div>
+          <div class="eyebrow">Digital Employee Step 6</div>
+          <h3 class="entry-title">Shopify checkout is prepared first, then confirmed only by webhook</h3>
+          <div class="entry-sub">DigiMaya now treats Shopify checkout and Shopify success as two different truths. A checkout link only means the cart is ready. A verified Shopify webhook is what can finally move the local order into a real confirmed state.</div>
+        </div>
+        <span class="status-pill status-dev">In Development</span>
+      </div>
+
+      <div class="logic-box">
+        <strong>20% logic</strong>
+        Sending a checkout link is not proof of payment. If DigiMaya says “confirmed” too early, the business loses money and the customer gets the wrong promise. So webhook verification must be the only thing that closes the sale.
+      </div>
+
+      <div class="grid">
+        <div class="note-card">
+          <h3>What we corrected</h3>
+          <ul>
+            <li>Linked Shopify carts now push local orders into <code>checkout_ready</code>.</li>
+            <li>Linked carts keep the order’s original session id and channel instead of drifting to request values.</li>
+            <li>Shopify carts now carry DigiMaya attributes like tenant id, order id, and session id.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What is built now</h3>
+          <ul>
+            <li>Verified Shopify webhooks can look for <code>digimaya_order_id</code> inside order attributes.</li>
+            <li>Matched orders can now move to <code>order_created</code> or <code>confirmed</code> depending on the Shopify event.</li>
+            <li>Local orders now store Shopify order id, Shopify order number, and confirmation time.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <h3>What still remains</h3>
+          <ul>
+            <li>The live end-to-end DM path still needs one full proof run against the Shopify sandbox.</li>
+            <li>Webhook topic handling will need more polish for abandoned or unpaid checkouts later.</li>
+            <li>Customer confirmation messages should only be added after the webhook-based success path is proven cleanly.</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
     <h2 class="section-title">Documentation Rule Going Forward</h2>
 
     <article class="entry">

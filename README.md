@@ -230,7 +230,7 @@ Important:
 
 ```bash
 git clone <repo-url>
-cd chatbot-backend
+cd DigiMaya
 npm install
 ```
 

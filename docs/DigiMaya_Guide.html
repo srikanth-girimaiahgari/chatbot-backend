@@ -368,8 +368,12 @@
         <h2>10. What should be built next</h2>
         <div class="card">
           <ol>
-            <li>Add payment links only after the payment-account ownership model is final</li>
-            <li>Add payment confirmation and paid-order state</li>
+            <li>Add the tenant-level Shopify foundation before touching MAYA prompts or checkout behavior</li>
+            <li>Add Shopify webhook verification and event logging before trusting checkout completion</li>
+            <li>Keep MAYA on structured shopping intent while the backend owns actual Shopify execution and Shopify catalog remains the source of truth for Shopify tenants</li>
+            <li>Keep Shopify checkout as <code>checkout_ready</code> only, and let verified Shopify webhooks be the only thing that moves orders into real confirmed state</li>
+            <li>Add payment links only after the payment-account ownership model is final for non-Shopify flows</li>
+            <li>Add richer webhook handling for paid, pending, and abandoned Shopify outcomes</li>
             <li>Add proper Instagram self-connect inside DigiMaya</li>
             <li>Strengthen client dashboard insights with more business outcomes</li>
             <li>Improve follow-up, payment, and conversion tracking</li>

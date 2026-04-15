@@ -8,6 +8,8 @@ const { connectCall } = require("./call-agent");
 const { router: smsAgent, init: initSmsAgent } = require("./sms-agent");
 const { createProviderAdminRouter } = require("./provider-admin");
 const { createClientPortalRouter } = require("./client-portal");
+const { createShopifyWebhookRouter } = require("./shopify-webhooks");
+const { fetchTenantShopifyProducts, createTenantShopifyCartFromIntent } = require("./shopify-service");
 const {
   buildMayaSystemPrompt,
   findMatchingProducts,
@@ -17,8 +19,6 @@ const {
 
 const app = express();
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
 
 const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -31,6 +31,10 @@ if (!supabaseKey) {
 const supabase = createClient(process.env.SUPABASE_URL, supabaseKey);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+app.use("/webhooks", createShopifyWebhookRouter({ supabase }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 initSmsAgent(supabase, anthropic, require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN));
 app.use("/admin", createProviderAdminRouter({ supabase }));
@@ -202,6 +206,36 @@ function parsePurchaseIntentPayload(reply) {
   };
 }
 
+function parseShoppingIntentPayload(reply) {
+  const match = String(reply || "").match(/SHOPPING_INTENT_JSON:(\{[\s\S]*\})\s*$/);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(match[1]);
+    return {
+      action: String(parsed.action || "").trim(),
+      productInterest: String(parsed.product_interest || "").trim(),
+      quantity: parseQuantity(parsed.quantity),
+      customerName: String(parsed.customer_name || "").trim(),
+      occasion: String(parsed.occasion || "").trim(),
+      contactMethod: String(parsed.contact_method || "").trim(),
+      contactDetail: String(parsed.contact_detail || "").trim()
+    };
+  } catch (error) {
+    console.error("Shopping intent parse error:", error.message);
+    return null;
+  }
+}
+
+function stripAssistantControlMarkers(reply) {
+  return String(reply || "")
+    .replace(/HANDOFF_READY\|[^\n]*/g, "")
+    .replace(/SHOPPING_INTENT_JSON:(\{[\s\S]*\})\s*$/g, "")
+    .trim();
+}
+
 function normalizeLookupText(value) {
   return String(value || "")
     .toLowerCase()
@@ -215,6 +249,54 @@ function splitRequestedProducts(productInterest) {
     .split(/,|\n|;/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+
+function mapShopifyProductsForConversation(products = []) {
+  return (products || []).map((product) => {
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const firstAvailableVariant = variants.find((variant) => variant.available_for_sale) || variants[0] || null;
+
+    return {
+      name: product.title,
+      description: variants.length
+        ? `Available variants: ${variants.slice(0, 6).map((variant) => variant.title).join(", ")}`
+        : "Available on Shopify",
+      price: firstAvailableVariant?.price_amount ?? 0,
+      in_stock: Boolean((product.total_inventory ?? 0) > 0 || firstAvailableVariant?.available_for_sale),
+      sizes_in_stock: variants.map((variant) => variant.title).filter(Boolean),
+      product_url: product.online_store_url || null,
+      image_url: null,
+      category: [],
+      style: [],
+      occasion: []
+    };
+  });
+}
+
+async function loadTenantConversationCatalog(tenant) {
+  const { data: localProducts, error: localProductsError } = await supabase
+    .from("products")
+    .select("*")
+    .eq("tenant_id", tenant.id)
+    .eq("in_stock", true);
+
+  if (localProductsError) {
+    throw localProductsError;
+  }
+
+  const localCatalog = localProducts || [];
+  if (localCatalog.length > 0 || !tenant?.shopify_store_domain || !tenant?.shopify_storefront_access_token) {
+    return localCatalog;
+  }
+
+  const shopifyCatalog = await fetchTenantShopifyProducts({
+    supabase,
+    tenantId: tenant.id,
+    limit: 25
+  });
+
+  return mapShopifyProductsForConversation(shopifyCatalog.products || []);
 }
 
 function resolveProductAgainstCatalog(products, productInterest) {
@@ -500,6 +582,107 @@ async function upsertDraftOrder({ tenant, sessionId, channel, latestMessage, int
   }
 }
 
+function tenantSupportsShopifyCheckout(tenant) {
+  return Boolean(tenant?.shopify_store_domain && tenant?.shopify_storefront_access_token);
+}
+
+function buildShopifyCheckoutReply(order, checkoutUrl, cart) {
+  const orderLabel = order.order_reference || "your order";
+  const totalLabel = cart?.total_amount && cart?.currency_code
+    ? `${cart.currency_code} ${Number(cart.total_amount).toFixed(2)}`
+    : order.total_amount && order.currency_code
+      ? `${order.currency_code} ${Number(order.total_amount).toFixed(2)}`
+      : "the total shown at checkout";
+
+  return `Your order ${orderLabel} is ready for checkout. Complete it here: ${checkoutUrl}\n\nDigiMaya has prepared your cart and the total is ${totalLabel}.`;
+}
+
+async function maybeCreateShopifyCheckout({
+  tenant,
+  sessionId,
+  channel,
+  latestMessage,
+  orderIntent,
+  shoppingIntent
+}) {
+  if (!tenantSupportsShopifyCheckout(tenant)) {
+    return { success: false, reason: "shopify_not_configured" };
+  }
+
+  if (!shoppingIntent || shoppingIntent.action !== "create_checkout") {
+    return { success: false, reason: "no_checkout_action" };
+  }
+
+  const normalizedIntent = {
+    customerName: shoppingIntent.customerName || orderIntent?.customerName || "",
+    occasion: shoppingIntent.occasion || orderIntent?.occasion || "",
+    contactMethod: shoppingIntent.contactMethod || orderIntent?.contactMethod || "",
+    contactDetail: shoppingIntent.contactDetail || orderIntent?.contactDetail || "",
+    productInterest: shoppingIntent.productInterest || orderIntent?.productInterest || "",
+    quantity: shoppingIntent.quantity || orderIntent?.quantity || 1
+  };
+
+  if (!normalizedIntent.productInterest) {
+    return { success: false, reason: "missing_product_interest" };
+  }
+
+  const savedOrderIntent = await upsertOrderIntent({
+    tenant,
+    sessionId,
+    channel,
+    latestMessage,
+    intent: normalizedIntent
+  });
+
+  const savedOrder = await upsertDraftOrder({
+    tenant,
+    sessionId,
+    channel,
+    latestMessage,
+    intent: normalizedIntent,
+    orderIntentId: savedOrderIntent?.id
+  });
+
+  if (!savedOrder?.id) {
+    return { success: false, reason: "draft_order_failed" };
+  }
+
+  try {
+    const checkout = await createTenantShopifyCartFromIntent({
+      supabase,
+      tenantId: tenant.id,
+      orderId: savedOrder.id,
+      sessionId,
+      channel
+      ,
+      productInterest: normalizedIntent.productInterest,
+      quantity: normalizedIntent.quantity
+    });
+
+    if (!checkout?.cart?.shopify_checkout_url) {
+      return { success: false, reason: "missing_checkout_url", order: savedOrder };
+    }
+
+    await supabase
+      .from("orders")
+      .update({
+        status: "checkout_ready",
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", savedOrder.id);
+
+    return {
+      success: true,
+      order: checkout.order || savedOrder,
+      cart: checkout.cart,
+      checkoutUrl: checkout.cart.shopify_checkout_url
+    };
+  } catch (error) {
+    console.error("Shopify checkout creation error:", error.message);
+    return { success: false, reason: error.message, order: savedOrder };
+  }
+}
+
 async function maybeCreateHotLeadAlert({ sessionId, tenant, latestMessage, recentChats, matchedProducts, channel }) {
   const totalTurns = (recentChats?.length || 0) + 1;
   const signalCount = countLeadSignals(latestMessage);
@@ -663,7 +846,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
       tenant_id: tenant.id,
     });
 
-    const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
+    const products = await loadTenantConversationCatalog(tenant);
     const { data: faqs }     = await supabase.from("faqs").select("*").eq("tenant_id", tenant.id);
     const matchedProducts = findMatchingProducts(products, messageText);
 
@@ -716,10 +899,43 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
     });
 
     let reply = response.content[0].text;
-
-    // Handle handoff trigger
+    const shoppingIntent = parseShoppingIntentPayload(reply);
     const orderIntent = parsePurchaseIntentPayload(reply);
-    if (orderIntent) {
+    const cleanReply = stripAssistantControlMarkers(reply);
+
+    if (shoppingIntent?.action === "create_checkout") {
+      const checkout = await maybeCreateShopifyCheckout({
+        tenant,
+        sessionId: senderId,
+        channel: "instagram",
+        latestMessage: messageText,
+        orderIntent,
+        shoppingIntent
+      });
+
+      if (checkout.success && checkout.checkoutUrl) {
+        reply = buildShopifyCheckoutReply(checkout.order, checkout.checkoutUrl, checkout.cart);
+      } else if (orderIntent) {
+        const savedOrderIntent = await upsertOrderIntent({
+          tenant,
+          sessionId: senderId,
+          channel: "instagram",
+          latestMessage: messageText,
+          intent: orderIntent
+        });
+        await upsertDraftOrder({
+          tenant,
+          sessionId: senderId,
+          channel: "instagram",
+          latestMessage: messageText,
+          intent: orderIntent,
+          orderIntentId: savedOrderIntent?.id
+        });
+        reply = applyLeadAvailabilityReply(cleanReply, tenant);
+      } else {
+        reply = applyLeadAvailabilityReply(cleanReply, tenant);
+      }
+    } else if (orderIntent) {
       const savedOrderIntent = await upsertOrderIntent({
         tenant,
         sessionId: senderId,
@@ -735,7 +951,7 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
         intent: orderIntent,
         orderIntentId: savedOrderIntent?.id
       });
-      reply = applyLeadAvailabilityReply(reply.split("HANDOFF_READY|")[0].trim(), tenant);
+      reply = applyLeadAvailabilityReply(cleanReply, tenant);
     }
 
     // Save MAYA's reply to history
@@ -811,7 +1027,7 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
       tenant_id: tenant.id,
     });
 
-    const { data: products } = await supabase.from("products").select("*").eq("tenant_id", tenant.id).eq("in_stock", true);
+    const products = await loadTenantConversationCatalog(tenant);
     const { data: faqs }     = await supabase.from("faqs").select("*").eq("tenant_id", tenant.id);
     const matchedProducts = findMatchingProducts(products, messageText);
 
@@ -864,10 +1080,43 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
     });
 
     let reply = response.content[0].text;
-
-    // Handle handoff trigger
+    const shoppingIntent = parseShoppingIntentPayload(reply);
     const orderIntent = parsePurchaseIntentPayload(reply);
-    if (orderIntent) {
+    const cleanReply = stripAssistantControlMarkers(reply);
+
+    if (shoppingIntent?.action === "create_checkout") {
+      const checkout = await maybeCreateShopifyCheckout({
+        tenant,
+        sessionId,
+        channel: "whatsapp",
+        latestMessage: messageText,
+        orderIntent,
+        shoppingIntent
+      });
+
+      if (checkout.success && checkout.checkoutUrl) {
+        reply = buildShopifyCheckoutReply(checkout.order, checkout.checkoutUrl, checkout.cart);
+      } else if (orderIntent) {
+        const savedOrderIntent = await upsertOrderIntent({
+          tenant,
+          sessionId,
+          channel: "whatsapp",
+          latestMessage: messageText,
+          intent: orderIntent
+        });
+        await upsertDraftOrder({
+          tenant,
+          sessionId,
+          channel: "whatsapp",
+          latestMessage: messageText,
+          intent: orderIntent,
+          orderIntentId: savedOrderIntent?.id
+        });
+        reply = applyLeadAvailabilityReply(cleanReply, tenant);
+      } else {
+        reply = applyLeadAvailabilityReply(cleanReply, tenant);
+      }
+    } else if (orderIntent) {
       const savedOrderIntent = await upsertOrderIntent({
         tenant,
         sessionId,
@@ -883,7 +1132,7 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
         intent: orderIntent,
         orderIntentId: savedOrderIntent?.id
       });
-      reply = applyLeadAvailabilityReply(reply.split("HANDOFF_READY|")[0].trim(), tenant);
+      reply = applyLeadAvailabilityReply(cleanReply, tenant);
     }
 
     await supabase.from("chat_messages").insert({
@@ -964,6 +1213,53 @@ app.delete("/cleanup/:session_id", async (req, res) => {
   await supabase.from("handoff_requests").delete().eq("session_id", session_id);
   await supabase.from("chat_messages").delete().eq("session_id", session_id);
   res.json({ message: "Session cleaned up: " + session_id });
+});
+
+app.post("/dev/tenants/:tenantId/chat", async (req, res) => {
+  const { tenantId } = req.params;
+  const { message, session_id, channel } = req.body || {};
+
+  if (!message || !session_id) {
+    return res.status(400).json({ error: "message and session_id are required" });
+  }
+
+  try {
+    const { data: tenant, error: tenantError } = await supabase
+      .from("tenants")
+      .select("*")
+      .eq("id", tenantId)
+      .maybeSingle();
+
+    if (tenantError) {
+      throw tenantError;
+    }
+
+    if (!tenant) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    const normalizedChannel = String(channel || "instagram").toLowerCase();
+    let reply;
+    let effectiveSessionId = session_id;
+
+    if (normalizedChannel === "whatsapp") {
+      const senderPhone = String(session_id || "").replace(/^wa_/, "");
+      effectiveSessionId = senderPhone;
+      reply = await getMayaReplyForWhatsApp(senderPhone, message, tenant);
+    } else {
+      reply = await getMayaReplyForInstagram(session_id, message, tenant);
+    }
+
+    res.json({
+      tenant_id: tenant.id,
+      channel: normalizedChannel,
+      session_id: normalizedChannel === "whatsapp" ? `wa_${effectiveSessionId}` : effectiveSessionId,
+      reply
+    });
+  } catch (err) {
+    console.error("Dev tenant chat error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/chat", async (req, res) => {
