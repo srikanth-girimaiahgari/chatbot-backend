@@ -257,6 +257,113 @@ function buildFaqText(faqs) {
   return (faqs || []).slice(0, 25).map((faq) => `Q: ${faq.question}\nA: ${faq.answer}`).join("\n\n");
 }
 
+function splitAttributeValues(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+
+  return String(value || "")
+    .split(/,|\/|\||;/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getProductColors(product) {
+  return splitAttributeValues(product?.color);
+}
+
+function getProductSizes(product) {
+  return splitAttributeValues(product?.sizes_in_stock);
+}
+
+function buildVariantSelectionReply(product) {
+  const colors = getProductColors(product);
+  const sizes = getProductSizes(product);
+
+  const lines = [`Got it, ${product.name}.`];
+
+  if (colors.length > 0) {
+    lines.push(`Colors: ${colors.join(", ")}`);
+  }
+
+  if (sizes.length > 0) {
+    lines.push(`Sizes: ${sizes.join(", ")}`);
+  }
+
+  if (colors.length > 0 && sizes.length > 0) {
+    lines.push("Which color and size do you want?");
+    return lines.join("\n");
+  }
+
+  if (colors.length > 0) {
+    lines.push("Which color do you want?");
+    return lines.join("\n");
+  }
+
+  if (sizes.length > 0) {
+    lines.push("Which size do you want?");
+    return lines.join("\n");
+  }
+
+  return `Got it, ${product.name}.\nWant me to add it?`;
+}
+
+function getCategoryIntent(products, latestMessage) {
+  const message = normalizeText(latestMessage);
+  if (!message) {
+    return null;
+  }
+
+  const wantsList = [
+    "list",
+    "show",
+    "see",
+    "collections",
+    "collection",
+    "catalog",
+    "range",
+    "have",
+    "available"
+  ].some((phrase) => message.includes(phrase));
+
+  if (!wantsList) {
+    return null;
+  }
+
+  const categories = Array.from(
+    new Set(
+      (products || [])
+        .flatMap((product) => splitAttributeValues(product.category))
+        .map((category) => category.trim())
+        .filter(Boolean)
+    )
+  );
+
+  return categories.find((category) => {
+    const normalizedCategory = normalizeText(category);
+    return normalizedCategory && message.includes(normalizedCategory);
+  }) || null;
+}
+
+function buildCategoryListingResponse(products, latestMessage) {
+  const category = getCategoryIntent(products, latestMessage);
+  if (!category) {
+    return null;
+  }
+
+  const picks = (products || [])
+    .filter((product) => splitAttributeValues(product.category).some((value) => normalizeText(value) === normalizeText(category)))
+    .filter((product) => product?.in_stock !== false)
+    .slice(0, 4);
+
+  if (picks.length === 0) {
+    return null;
+  }
+
+  const lines = picks.map((product) => `- ${product.name}`);
+  return `Here are our ${category.toLowerCase()} picks:\n${lines.join("\n")}\nWhich one do you want?`;
+}
+
 function isRecentProduct(product) {
   if (product?.is_new_arrival === true) {
     return true;
@@ -456,7 +563,7 @@ function buildProductResponse(product, latestMessage, tenant = {}) {
     ].filter(Boolean).join("\n");
   }
 
-  return null;
+  return buildVariantSelectionReply(product);
 }
 
 function pickReason(product, latestMessage) {
@@ -546,6 +653,8 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
     "Ask one clear question at the end, not two or three.",
     "If the customer already chose an item, stop selling and move to add-to-cart or checkout.",
     "If the customer asks to see collections, give only 3-5 top categories or a few best picks first, not the full catalog dump.",
+    "If the customer asks for a category like jewelry, sarees, lehengas, shawls, or bangles, show only product names first. Do not include price, colors, sizes, or long descriptions in that first list.",
+    "Once the customer picks one product, ask for color or size next if those options exist. Do not dump variants before the customer chooses the product.",
     `Use the tenant's catalog currency consistently: ${currency.code} (${currency.symbol}).`,
     "Never switch to a different currency or invent currency symbols.",
     "Never invent price, stock, shipping time, size details, or discount approvals.",
@@ -608,5 +717,6 @@ module.exports = {
   buildProductResponse,
   buildBudgetRecommendationResponse,
   buildCollectionResponse,
+  buildCategoryListingResponse,
   parseBudgetFromText
 };
