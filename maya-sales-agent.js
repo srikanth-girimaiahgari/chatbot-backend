@@ -257,20 +257,147 @@ function buildFaqText(faqs) {
   return (faqs || []).slice(0, 25).map((faq) => `Q: ${faq.question}\nA: ${faq.answer}`).join("\n\n");
 }
 
+function isRecentProduct(product) {
+  if (product?.is_new_arrival === true) {
+    return true;
+  }
+
+  const createdAt = product?.created_at ? new Date(product.created_at) : null;
+  if (!createdAt || Number.isNaN(createdAt.getTime())) {
+    return false;
+  }
+
+  const ageInDays = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+  return ageInDays <= 45;
+}
+
+function isOnSaleProduct(product) {
+  if (product?.is_on_sale === true) {
+    return true;
+  }
+
+  const price = Number(product?.price);
+  const regularPrice = Number(product?.regular_price);
+  const discount = Number(product?.discount_percentage);
+
+  return (
+    (Number.isFinite(regularPrice) && Number.isFinite(price) && regularPrice > price) ||
+    (Number.isFinite(discount) && discount > 0)
+  );
+}
+
+function getCollectionIntent(latestMessage) {
+  const message = normalizeText(latestMessage);
+  if (!message) {
+    return null;
+  }
+
+  const intents = [
+    {
+      key: "new_arrivals",
+      phrases: ["new arrivals", "new arrival", "new collection", "new listings", "latest collection", "latest arrivals", "new items", "latest items"]
+    },
+    {
+      key: "best_sellers",
+      phrases: ["best sellers", "best seller", "most preferred", "most sold", "popular items", "popular products", "what sells most", "bestselling", "best selling"]
+    },
+    {
+      key: "top_rated",
+      phrases: ["top rated", "top-rated", "best rated", "highest rated", "most reviewed", "best reviewed", "top review", "best review"]
+    },
+    {
+      key: "deals",
+      phrases: ["on sale", "sale items", "sale collection", "deals", "offers", "promotions", "discounted", "discount items", "any sale", "any offers"]
+    }
+  ];
+
+  for (const intent of intents) {
+    if (intent.phrases.some((phrase) => message.includes(phrase))) {
+      return intent.key;
+    }
+  }
+
+  return null;
+}
+
+function sortCollectionProducts(products, intentKey) {
+  const rows = (products || []).filter((product) => product?.in_stock !== false);
+
+  if (intentKey === "best_sellers") {
+    return rows.sort((a, b) => Number(b.sales_count || 0) - Number(a.sales_count || 0));
+  }
+
+  if (intentKey === "top_rated") {
+    return rows.sort((a, b) => {
+      const ratingDiff = Number(b.review_rating || 0) - Number(a.review_rating || 0);
+      if (ratingDiff !== 0) {
+        return ratingDiff;
+      }
+      return Number(b.review_count || 0) - Number(a.review_count || 0);
+    });
+  }
+
+  return rows.sort((a, b) => {
+    const aDate = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const bDate = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    return bDate - aDate;
+  });
+}
+
+function buildCollectionResponse(products, latestMessage, tenant = {}) {
+  const intentKey = getCollectionIntent(latestMessage);
+  if (!intentKey) {
+    return null;
+  }
+
+  const currency = getCatalogCurrency(products, tenant);
+  let filtered = [];
+  let label = "";
+
+  if (intentKey === "new_arrivals") {
+    filtered = (products || []).filter(isRecentProduct);
+    label = "new arrivals";
+  } else if (intentKey === "best_sellers") {
+    filtered = (products || []).filter((product) => product?.is_best_seller === true || Number(product?.sales_count || 0) > 0);
+    label = "best sellers";
+  } else if (intentKey === "top_rated") {
+    filtered = (products || []).filter((product) => product?.is_top_rated === true || Number(product?.review_rating || 0) >= 4);
+    label = "top rated picks";
+  } else if (intentKey === "deals") {
+    filtered = (products || []).filter(isOnSaleProduct);
+    label = "sale picks";
+  }
+
+  const picks = sortCollectionProducts(filtered, intentKey).slice(0, 3);
+  if (picks.length === 0) {
+    return `I don’t have clear ${label} tagged right now.\nI can still show you a few good picks from the catalog.`;
+  }
+
+  const lines = picks.map((product) => `- ${product.name} - ${formatMoney(product.price, currency)}`);
+  return `Here are ${label}:\n${lines.join("\n")}\nWhich one do you want to see?`;
+}
+
 function findMatchingProducts(products, latestMessage) {
   const message = normalizeText(latestMessage);
 
   return (products || []).filter((product) => {
-    const name = normalizeText(product.name);
-    if (!name) {
+    const names = [product.name, product.full_name]
+      .map((value) => normalizeText(value))
+      .filter(Boolean);
+
+    if (names.length === 0) {
       return false;
     }
 
-    if (message.includes(name)) {
+    const exactOrPartial = names.some((name) => message.includes(name) || name.includes(message));
+    if (exactOrPartial) {
       return true;
     }
 
-    const nameTokens = name.split(/\s+/).filter((token) => token.length > 3);
+    const nameTokens = names
+      .join(" ")
+      .split(/\s+/)
+      .filter((token) => token.length > 3);
     const matchedTokens = nameTokens.filter((token) => message.includes(token));
     return matchedTokens.length >= Math.min(2, nameTokens.length);
   });
@@ -427,6 +554,7 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
     "Do not answer price questions with a broad collection range when an exact matched product price is available.",
     "Only mention a general price range if the customer explicitly asks for options by budget and no single product is clearly identified.",
     "If the customer asks price/details/availability, answer first with facts from the catalog, then ask one useful next-step question.",
+    "If the customer asks for new arrivals, best sellers, top rated items, deals, offers, or promotions, show only 2-3 relevant products from that catalog segment.",
     budgetPrompt
       ? `If budget is missing and recommendations would help, ask for budget using sensible catalog-based choices such as: ${budgetPrompt}.`
       : "If budget is missing and recommendations would help, ask for the customer's preferred budget range in the catalog's currency.",
@@ -479,5 +607,6 @@ module.exports = {
   findMatchingProducts,
   buildProductResponse,
   buildBudgetRecommendationResponse,
+  buildCollectionResponse,
   parseBudgetFromText
 };

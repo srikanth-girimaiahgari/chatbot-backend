@@ -9,12 +9,13 @@ const { router: smsAgent, init: initSmsAgent } = require("./sms-agent");
 const { createProviderAdminRouter } = require("./provider-admin");
 const { createClientPortalRouter } = require("./client-portal");
 const { createShopifyWebhookRouter } = require("./shopify-webhooks");
-const { fetchTenantShopifyProducts, createTenantShopifyCartFromIntent } = require("./shopify-service");
+const { fetchTenantShopifyProducts, createTenantShopifyCartFromIntent, buildShopifyShortTitle } = require("./shopify-service");
 const {
   buildMayaSystemPrompt,
   findMatchingProducts,
   buildProductResponse,
-  buildBudgetRecommendationResponse
+  buildBudgetRecommendationResponse,
+  buildCollectionResponse
 } = require("./maya-sales-agent");
 
 const app = express();
@@ -60,6 +61,10 @@ function getDirectProductReply(products, latestMessage, tenant) {
 
 function getDirectBudgetReply(products, latestMessage, tenant) {
   return buildBudgetRecommendationResponse(products, latestMessage, tenant);
+}
+
+function getDirectCollectionReply(products, latestMessage, tenant) {
+  return buildCollectionResponse(products, latestMessage, tenant);
 }
 
 function parseTimeParts(value) {
@@ -256,9 +261,11 @@ function mapShopifyProductsForConversation(products = []) {
   return (products || []).map((product) => {
     const variants = Array.isArray(product.variants) ? product.variants : [];
     const firstAvailableVariant = variants.find((variant) => variant.available_for_sale) || variants[0] || null;
+    const shortName = product.short_title || buildShopifyShortTitle(product.title) || product.title;
 
     return {
-      name: product.title,
+      name: shortName,
+      full_name: product.title,
       description: variants.length
         ? `Available variants: ${variants.slice(0, 6).map((variant) => variant.title).join(", ")}`
         : "Available on Shopify",
@@ -306,12 +313,25 @@ function resolveProductAgainstCatalog(products, productInterest) {
 
   const rows = products || [];
   const normalizedInterest = normalizeLookupText(productInterest);
-  const exact = rows.find((product) => normalizeLookupText(product.name) === normalizedInterest);
+  const exact = rows.find((product) => {
+    const normalizedName = normalizeLookupText(product.name);
+    const normalizedFullName = normalizeLookupText(product.full_name);
+    return normalizedName === normalizedInterest || normalizedFullName === normalizedInterest;
+  });
   if (exact) {
     return exact;
   }
 
-  return rows.find((product) => normalizedInterest.includes(normalizeLookupText(product.name)) || normalizeLookupText(product.name).includes(normalizedInterest)) || null;
+  return rows.find((product) => {
+    const normalizedName = normalizeLookupText(product.name);
+    const normalizedFullName = normalizeLookupText(product.full_name);
+    return (
+      normalizedInterest.includes(normalizedName) ||
+      normalizedName.includes(normalizedInterest) ||
+      normalizedInterest.includes(normalizedFullName) ||
+      normalizedFullName.includes(normalizedInterest)
+    );
+  }) || null;
 }
 
 async function resolveProductsForIntent(tenantId, productInterest, requestedQuantity) {
@@ -869,7 +889,10 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
       channel: "Instagram DM"
     });
 
-    const directReply = getDirectProductReply(products, messageText, tenant) || getDirectBudgetReply(products, messageText, tenant);
+    const directReply =
+      getDirectProductReply(products, messageText, tenant) ||
+      getDirectBudgetReply(products, messageText, tenant) ||
+      getDirectCollectionReply(products, messageText, tenant);
     if (directReply) {
       await supabase.from("chat_messages").insert({
         session_id: senderId,
@@ -1050,7 +1073,10 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
       channel: "WhatsApp"
     });
 
-    const directReply = getDirectProductReply(products, messageText, tenant) || getDirectBudgetReply(products, messageText, tenant);
+    const directReply =
+      getDirectProductReply(products, messageText, tenant) ||
+      getDirectBudgetReply(products, messageText, tenant) ||
+      getDirectCollectionReply(products, messageText, tenant);
     if (directReply) {
       await supabase.from("chat_messages").insert({
         session_id: sessionId,
@@ -1287,7 +1313,10 @@ app.post("/chat", async (req, res) => {
       return res.json({ reply: loopReply });
     }
 
-    const directReply = getDirectProductReply(products, message, {}) || getDirectBudgetReply(products, message, {});
+    const directReply =
+      getDirectProductReply(products, message, {}) ||
+      getDirectBudgetReply(products, message, {}) ||
+      getDirectCollectionReply(products, message, {});
     if (directReply) {
       await supabase.from("chat_messages").insert({ session_id, role: "assistant", content: directReply });
       return res.json({ reply: directReply });
