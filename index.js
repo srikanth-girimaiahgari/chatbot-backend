@@ -9,12 +9,15 @@ const { router: smsAgent, init: initSmsAgent } = require("./sms-agent");
 const { createProviderAdminRouter } = require("./provider-admin");
 const { createClientPortalRouter } = require("./client-portal");
 const { createShopifyWebhookRouter } = require("./shopify-webhooks");
-const { fetchTenantShopifyProducts, createTenantShopifyCartFromIntent } = require("./shopify-service");
+const { fetchTenantShopifyProducts, createTenantShopifyCartFromIntent, buildShopifyShortTitle } = require("./shopify-service");
 const {
   buildMayaSystemPrompt,
   findMatchingProducts,
   buildProductResponse,
-  buildBudgetRecommendationResponse
+  buildBudgetRecommendationResponse,
+  buildCollectionResponse,
+  buildCategoryListingResponse,
+  buildBrowseListingResponse
 } = require("./maya-sales-agent");
 
 const app = express();
@@ -60,6 +63,18 @@ function getDirectProductReply(products, latestMessage, tenant) {
 
 function getDirectBudgetReply(products, latestMessage, tenant) {
   return buildBudgetRecommendationResponse(products, latestMessage, tenant);
+}
+
+function getDirectCollectionReply(products, latestMessage, tenant) {
+  return buildCollectionResponse(products, latestMessage, tenant);
+}
+
+function getDirectCategoryReply(products, latestMessage) {
+  return buildCategoryListingResponse(products, latestMessage);
+}
+
+function getDirectBrowseReply(products, latestMessage) {
+  return buildBrowseListingResponse(products, latestMessage);
 }
 
 function parseTimeParts(value) {
@@ -310,9 +325,11 @@ function mapShopifyProductsForConversation(products = []) {
   return (products || []).map((product) => {
     const variants = Array.isArray(product.variants) ? product.variants : [];
     const firstAvailableVariant = variants.find((variant) => variant.available_for_sale) || variants[0] || null;
+    const shortName = product.short_title || buildShopifyShortTitle(product.title) || product.title;
 
     return {
-      name: product.title,
+      name: shortName,
+      full_name: product.title,
       description: variants.length
         ? `Available variants: ${variants.slice(0, 6).map((variant) => variant.title).join(", ")}`
         : "Available on Shopify",
@@ -360,12 +377,25 @@ function resolveProductAgainstCatalog(products, productInterest) {
 
   const rows = products || [];
   const normalizedInterest = normalizeLookupText(productInterest);
-  const exact = rows.find((product) => normalizeLookupText(product.name) === normalizedInterest);
+  const exact = rows.find((product) => {
+    const normalizedName = normalizeLookupText(product.name);
+    const normalizedFullName = normalizeLookupText(product.full_name);
+    return normalizedName === normalizedInterest || normalizedFullName === normalizedInterest;
+  });
   if (exact) {
     return exact;
   }
 
-  return rows.find((product) => normalizedInterest.includes(normalizeLookupText(product.name)) || normalizeLookupText(product.name).includes(normalizedInterest)) || null;
+  return rows.find((product) => {
+    const normalizedName = normalizeLookupText(product.name);
+    const normalizedFullName = normalizeLookupText(product.full_name);
+    return (
+      normalizedInterest.includes(normalizedName) ||
+      normalizedName.includes(normalizedInterest) ||
+      normalizedInterest.includes(normalizedFullName) ||
+      normalizedFullName.includes(normalizedInterest)
+    );
+  }) || null;
 }
 
 async function resolveProductsForIntent(tenantId, productInterest, requestedQuantity) {
@@ -641,14 +671,13 @@ function tenantSupportsShopifyCheckout(tenant) {
 }
 
 function buildShopifyCheckoutReply(order, checkoutUrl, cart) {
-  const orderLabel = order.order_reference || "your order";
-  const totalLabel = cart?.total_amount && cart?.currency_code
-    ? `${cart.currency_code} ${Number(cart.total_amount).toFixed(2)}`
-    : order.total_amount && order.currency_code
-      ? `${order.currency_code} ${Number(order.total_amount).toFixed(2)}`
+  const totalLabel = order?.total_amount && order?.currency_code
+    ? `${order.currency_code} ${Number(order.total_amount).toFixed(2)}`
+    : cart?.total_amount && cart?.currency_code
+      ? `${cart.currency_code} ${Number(cart.total_amount).toFixed(2)}`
       : "the total shown at checkout";
 
-  return `Your order ${orderLabel} is ready for checkout. Complete it here: ${checkoutUrl}\n\nDigiMaya has prepared your cart and the total is ${totalLabel}.`;
+  return `Perfect, here’s your checkout link:\n${checkoutUrl}\nTotal: ${totalLabel}\nPayment confirms the order.`;
 }
 
 async function maybeCreateShopifyCheckout({
@@ -924,7 +953,12 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
       channel: "Instagram DM"
     });
 
-    const directReply = getDirectProductReply(products, messageText, tenant) || getDirectBudgetReply(products, messageText, tenant);
+    const directReply =
+      getDirectCategoryReply(products, messageText) ||
+      getDirectBrowseReply(products, messageText) ||
+      getDirectProductReply(products, messageText, tenant) ||
+      getDirectBudgetReply(products, messageText, tenant) ||
+      getDirectCollectionReply(products, messageText, tenant);
     if (directReply) {
       await supabase.from("chat_messages").insert({
         session_id: senderId,
@@ -1105,7 +1139,12 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
       channel: "WhatsApp"
     });
 
-    const directReply = getDirectProductReply(products, messageText, tenant) || getDirectBudgetReply(products, messageText, tenant);
+    const directReply =
+      getDirectCategoryReply(products, messageText) ||
+      getDirectBrowseReply(products, messageText) ||
+      getDirectProductReply(products, messageText, tenant) ||
+      getDirectBudgetReply(products, messageText, tenant) ||
+      getDirectCollectionReply(products, messageText, tenant);
     if (directReply) {
       await supabase.from("chat_messages").insert({
         session_id: sessionId,
@@ -1371,8 +1410,12 @@ app.post("/chat", async (req, res) => {
     }
 
     const directReply =
+      getDirectCategoryReply(products, message) ||
+      getDirectBrowseReply(products, message) ||
       getDirectProductReply(products, message, tenant) ||
-      getDirectBudgetReply(products, message, tenant);
+      getDirectBudgetReply(products, message, tenant) ||
+      getDirectCollectionReply(products, message, tenant);
+
     if (directReply) {
       await supabase.from("chat_messages").insert({
         session_id,

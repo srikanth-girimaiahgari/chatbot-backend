@@ -15,6 +15,31 @@ function splitRequestedProducts(productInterest) {
     .filter(Boolean);
 }
 
+function buildShopifyShortTitle(title) {
+  const raw = String(title || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const cleaned = raw
+    .replace(/\s*[-|/].*$/, "")
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .replace(/\b(with|for|set of|pack of)\b.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) {
+    return raw;
+  }
+
+  const words = cleaned.split(" ");
+  if (words.length <= 6) {
+    return cleaned;
+  }
+
+  return words.slice(0, 6).join(" ");
+}
+
 function normalizeShopifyDomain(value) {
   return String(value || "")
     .trim()
@@ -136,6 +161,7 @@ function mapShopifyProduct(product) {
   return {
     id: product.id,
     title: product.title,
+    short_title: buildShopifyShortTitle(product.title),
     handle: product.handle,
     online_store_url: product.onlineStoreUrl || null,
     total_inventory: product.totalInventory ?? null,
@@ -154,21 +180,35 @@ function resolveRequestedShopifyProduct(products, requestedName) {
     return null;
   }
 
-  const exact = products.find((product) => normalizeLookupText(product.title) === normalizedInterest);
+  const exact = products.find((product) => {
+    const titleMatches = normalizeLookupText(product.title) === normalizedInterest;
+    const shortTitleMatches = normalizeLookupText(product.short_title) === normalizedInterest;
+    return titleMatches || shortTitleMatches;
+  });
   if (exact) {
     return exact;
   }
 
   const partial = products.find((product) => {
     const normalizedTitle = normalizeLookupText(product.title);
-    return normalizedInterest.includes(normalizedTitle) || normalizedTitle.includes(normalizedInterest);
+    const normalizedShortTitle = normalizeLookupText(product.short_title);
+    return (
+      normalizedInterest.includes(normalizedTitle) ||
+      normalizedTitle.includes(normalizedInterest) ||
+      normalizedInterest.includes(normalizedShortTitle) ||
+      normalizedShortTitle.includes(normalizedInterest)
+    );
   });
   if (partial) {
     return partial;
   }
 
   return products.find((product) => {
-    const titleTokens = normalizeLookupText(product.title).split(/\s+/).filter((token) => token.length > 3);
+    const titleTokens = [product.title, product.short_title]
+      .map((value) => normalizeLookupText(value))
+      .join(" ")
+      .split(/\s+/)
+      .filter((token) => token.length > 3);
     const matchedTokens = titleTokens.filter((token) => normalizedInterest.includes(token));
     return matchedTokens.length >= Math.min(2, titleTokens.length);
   }) || null;
@@ -987,6 +1027,7 @@ async function getTenantShopifyCheckoutUrl({ supabase, tenantId, localCartId }) 
 }
 
 module.exports = {
+  buildShopifyShortTitle,
   fetchTenantShopifyProducts,
   createTenantShopifyCartFromIntent,
   createTenantShopifyCartFromOrder,

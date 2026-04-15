@@ -257,20 +257,375 @@ function buildFaqText(faqs) {
   return (faqs || []).slice(0, 25).map((faq) => `Q: ${faq.question}\nA: ${faq.answer}`).join("\n\n");
 }
 
+function splitAttributeValues(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+
+  return String(value || "")
+    .split(/,|\/|\||;/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function uniqueValues(values = []) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function cleanVariantFragment(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function simplifySizeLabel(value) {
+  const raw = cleanVariantFragment(value);
+  if (!raw) {
+    return "";
+  }
+
+  const beforeSlash = raw.split("/")[0].trim();
+  const withoutMeasurement = beforeSlash.replace(/\([^)]*\)/g, "").trim();
+  const normalized = withoutMeasurement.toUpperCase();
+  const shortMatch = normalized.match(/\b(XXS|XS|S|M|L|XL|XXL|XXXL|FREE SIZE|FREE)\b/);
+  if (shortMatch) {
+    return shortMatch[1] === "FREE" ? "Free Size" : shortMatch[1];
+  }
+
+  return withoutMeasurement || raw;
+}
+
+function extractColorFromVariant(value) {
+  const raw = cleanVariantFragment(value);
+  if (!raw) {
+    return "";
+  }
+
+  const slashParts = raw.split("/").map((part) => part.trim()).filter(Boolean);
+  if (slashParts.length > 1) {
+    return slashParts[slashParts.length - 1];
+  }
+
+  return "";
+}
+
+function getProductColors(product) {
+  const explicitColors = splitAttributeValues(product?.color);
+  if (explicitColors.length > 0) {
+    return uniqueValues(explicitColors);
+  }
+
+  return uniqueValues(splitAttributeValues(product?.sizes_in_stock).map(extractColorFromVariant));
+}
+
+function getProductSizes(product) {
+  return uniqueValues(splitAttributeValues(product?.sizes_in_stock).map(simplifySizeLabel));
+}
+
+function buildVariantSelectionReply(product) {
+  const colors = getProductColors(product);
+  const sizes = getProductSizes(product);
+
+  const lines = [`Got it, ${product.name}.`];
+
+  if (colors.length > 0) {
+    lines.push(`Colors: ${colors.join(", ")}`);
+  }
+
+  if (sizes.length > 0) {
+    lines.push(`Sizes: ${sizes.join(", ")}`);
+  }
+
+  if (colors.length > 0 && sizes.length > 0) {
+    lines.push("Which color and size do you want?");
+    return lines.join("\n");
+  }
+
+  if (colors.length > 0) {
+    lines.push("Which color do you want?");
+    return lines.join("\n");
+  }
+
+  if (sizes.length > 0) {
+    lines.push("Which size do you want?");
+    return lines.join("\n");
+  }
+
+  return `Got it, ${product.name}.\nWant me to add it?`;
+}
+
+function getCategoryIntent(products, latestMessage) {
+  const message = normalizeText(latestMessage);
+  if (!message) {
+    return null;
+  }
+
+  const wantsList = [
+    "list",
+    "show",
+    "see",
+    "collections",
+    "collection",
+    "catalog",
+    "range",
+    "have",
+    "available"
+  ].some((phrase) => message.includes(phrase));
+
+  if (!wantsList) {
+    return null;
+  }
+
+  const categories = Array.from(
+    new Set(
+      (products || [])
+        .flatMap((product) => splitAttributeValues(product.category))
+        .map((category) => category.trim())
+        .filter(Boolean)
+    )
+  );
+
+  return categories.find((category) => {
+    const normalizedCategory = normalizeText(category);
+    return normalizedCategory && message.includes(normalizedCategory);
+  }) || null;
+}
+
+function buildCategoryListingResponse(products, latestMessage) {
+  const category = getCategoryIntent(products, latestMessage);
+  if (!category) {
+    return null;
+  }
+
+  const picks = (products || [])
+    .filter((product) => splitAttributeValues(product.category).some((value) => normalizeText(value) === normalizeText(category)))
+    .filter((product) => product?.in_stock !== false)
+    .slice(0, 4);
+
+  if (picks.length === 0) {
+    return null;
+  }
+
+  const lines = picks.map((product) => `- ${product.name}`);
+  return `Here are our ${category.toLowerCase()} picks:\n${lines.join("\n")}\nWhich one do you want?`;
+}
+
+function getBrowseQualifier(latestMessage) {
+  const message = normalizeText(latestMessage);
+  if (!message) {
+    return null;
+  }
+
+  const wantsBrowse = [
+    "other",
+    "else",
+    "more",
+    "show",
+    "list",
+    "see",
+    "pieces",
+    "options"
+  ].some((phrase) => message.includes(phrase));
+
+  if (!wantsBrowse) {
+    return null;
+  }
+
+  const qualifiers = ["bridal", "wedding", "party", "festive", "daily wear", "accessories", "jewelry", "saree", "sarees", "lehenga", "lehengas", "shawl", "shawls", "bangle", "bangles"];
+  return qualifiers.find((item) => message.includes(item)) || null;
+}
+
+function productMatchesQualifier(product, qualifier) {
+  const haystack = [
+    product.name,
+    product.full_name,
+    product.category,
+    product.style,
+    product.occasion,
+    product.description
+  ]
+    .flatMap((value) => splitAttributeValues(value))
+    .map((value) => normalizeText(value))
+    .filter(Boolean)
+    .join(" ");
+
+  if (!haystack) {
+    return false;
+  }
+
+  if (qualifier === "wedding") {
+    return haystack.includes("wedding") || haystack.includes("bridal");
+  }
+
+  if (qualifier.endsWith("s")) {
+    const singular = qualifier.slice(0, -1);
+    return haystack.includes(qualifier) || haystack.includes(singular);
+  }
+
+  return haystack.includes(qualifier);
+}
+
+function buildBrowseListingResponse(products, latestMessage) {
+  const qualifier = getBrowseQualifier(latestMessage);
+  if (!qualifier) {
+    return null;
+  }
+
+  const picks = (products || [])
+    .filter((product) => product?.in_stock !== false)
+    .filter((product) => productMatchesQualifier(product, qualifier))
+    .slice(0, 4);
+
+  if (picks.length === 0) {
+    return null;
+  }
+
+  const label = qualifier === "wedding" ? "bridal" : qualifier;
+  const lines = picks.map((product) => `- ${product.name}`);
+  return `Here are some ${label} picks:\n${lines.join("\n")}\nWhich one do you want?`;
+}
+
+function isRecentProduct(product) {
+  if (product?.is_new_arrival === true) {
+    return true;
+  }
+
+  const createdAt = product?.created_at ? new Date(product.created_at) : null;
+  if (!createdAt || Number.isNaN(createdAt.getTime())) {
+    return false;
+  }
+
+  const ageInDays = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+  return ageInDays <= 45;
+}
+
+function isOnSaleProduct(product) {
+  if (product?.is_on_sale === true) {
+    return true;
+  }
+
+  const price = Number(product?.price);
+  const regularPrice = Number(product?.regular_price);
+  const discount = Number(product?.discount_percentage);
+
+  return (
+    (Number.isFinite(regularPrice) && Number.isFinite(price) && regularPrice > price) ||
+    (Number.isFinite(discount) && discount > 0)
+  );
+}
+
+function getCollectionIntent(latestMessage) {
+  const message = normalizeText(latestMessage);
+  if (!message) {
+    return null;
+  }
+
+  const intents = [
+    {
+      key: "new_arrivals",
+      phrases: ["new arrivals", "new arrival", "new collection", "new listings", "latest collection", "latest arrivals", "new items", "latest items"]
+    },
+    {
+      key: "best_sellers",
+      phrases: ["best sellers", "best seller", "most preferred", "most sold", "popular items", "popular products", "what sells most", "bestselling", "best selling"]
+    },
+    {
+      key: "top_rated",
+      phrases: ["top rated", "top-rated", "best rated", "highest rated", "most reviewed", "best reviewed", "top review", "best review"]
+    },
+    {
+      key: "deals",
+      phrases: ["on sale", "sale items", "sale collection", "deals", "offers", "promotions", "discounted", "discount items", "any sale", "any offers"]
+    }
+  ];
+
+  for (const intent of intents) {
+    if (intent.phrases.some((phrase) => message.includes(phrase))) {
+      return intent.key;
+    }
+  }
+
+  return null;
+}
+
+function sortCollectionProducts(products, intentKey) {
+  const rows = (products || []).filter((product) => product?.in_stock !== false);
+
+  if (intentKey === "best_sellers") {
+    return rows.sort((a, b) => Number(b.sales_count || 0) - Number(a.sales_count || 0));
+  }
+
+  if (intentKey === "top_rated") {
+    return rows.sort((a, b) => {
+      const ratingDiff = Number(b.review_rating || 0) - Number(a.review_rating || 0);
+      if (ratingDiff !== 0) {
+        return ratingDiff;
+      }
+      return Number(b.review_count || 0) - Number(a.review_count || 0);
+    });
+  }
+
+  return rows.sort((a, b) => {
+    const aDate = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const bDate = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    return bDate - aDate;
+  });
+}
+
+function buildCollectionResponse(products, latestMessage, tenant = {}) {
+  const intentKey = getCollectionIntent(latestMessage);
+  if (!intentKey) {
+    return null;
+  }
+
+  const currency = getCatalogCurrency(products, tenant);
+  let filtered = [];
+  let label = "";
+
+  if (intentKey === "new_arrivals") {
+    filtered = (products || []).filter(isRecentProduct);
+    label = "new arrivals";
+  } else if (intentKey === "best_sellers") {
+    filtered = (products || []).filter((product) => product?.is_best_seller === true || Number(product?.sales_count || 0) > 0);
+    label = "best sellers";
+  } else if (intentKey === "top_rated") {
+    filtered = (products || []).filter((product) => product?.is_top_rated === true || Number(product?.review_rating || 0) >= 4);
+    label = "top rated picks";
+  } else if (intentKey === "deals") {
+    filtered = (products || []).filter(isOnSaleProduct);
+    label = "sale picks";
+  }
+
+  const picks = sortCollectionProducts(filtered, intentKey).slice(0, 3);
+  if (picks.length === 0) {
+    return `I don’t have clear ${label} tagged right now.\nI can still show you a few good picks from the catalog.`;
+  }
+
+  const lines = picks.map((product) => `- ${product.name} - ${formatMoney(product.price, currency)}`);
+  return `Here are ${label}:\n${lines.join("\n")}\nWhich one do you want to see?`;
+}
+
 function findMatchingProducts(products, latestMessage) {
   const message = normalizeText(latestMessage);
 
   return (products || []).filter((product) => {
-    const name = normalizeText(product.name);
-    if (!name) {
+    const names = [product.name, product.full_name]
+      .map((value) => normalizeText(value))
+      .filter(Boolean);
+
+    if (names.length === 0) {
       return false;
     }
 
-    if (message.includes(name)) {
+    const exactOrPartial = names.some((name) => message.includes(name) || name.includes(message));
+    if (exactOrPartial) {
       return true;
     }
 
-    const nameTokens = name.split(/\s+/).filter((token) => token.length > 3);
+    const nameTokens = names
+      .join(" ")
+      .split(/\s+/)
+      .filter((token) => token.length > 3);
     const matchedTokens = nameTokens.filter((token) => message.includes(token));
     return matchedTokens.length >= Math.min(2, nameTokens.length);
   });
@@ -282,41 +637,54 @@ function buildProductResponse(product, latestMessage, tenant = {}) {
   const sizes = product.sizes_in_stock && product.sizes_in_stock.length > 0
     ? product.sizes_in_stock.join(", ")
     : null;
-  const priceLine = `${product.name} is priced at ${formatMoney(product.price, currency)}.`;
-  const linkLine = product.product_url ? `Product link: ${product.product_url}.` : "";
-  const imageLine = product.image_url ? `Image: ${product.image_url}.` : "";
+  const priceLine = `${product.name} is ${formatMoney(product.price, currency)}.`;
+  const linkLine = product.product_url ? `Link: ${product.product_url}` : "";
+  const imageLine = product.image_url ? `Image: ${product.image_url}` : "";
 
   if (message.includes("image") || message.includes("photo") || message.includes("picture") || message.includes("pic")) {
     if (product.image_url || product.product_url) {
-      return `${priceLine} ${imageLine} ${linkLine}`.trim();
+      return [priceLine, imageLine, linkLine].filter(Boolean).join("\n");
     }
-    return `${priceLine} I can help with product details, but an image link is not saved for this item yet.`;
+    return `${priceLine}\nI don’t have an image link saved for it yet.`;
   }
 
   if (message.includes("link") || message.includes("url") || message.includes("website")) {
     if (product.product_url) {
-      return `${priceLine} ${linkLine}`.trim();
+      return `${priceLine}\n${linkLine}`;
     }
-    return `${priceLine} A product link is not saved for this item yet, but I can still help with details or similar options.`;
+    return `${priceLine}\nI don’t have the product link saved yet.`;
   }
 
   if (message.includes("available") || message.includes("availability") || message.includes("in stock")) {
     const stockLine = product.in_stock === false
-      ? "It is currently out of stock."
-      : "It is currently available.";
-    return `${priceLine} ${stockLine} ${sizes ? `Sizes available: ${sizes}.` : ""} Would you like details or similar options too?`.trim();
+      ? "Currently out of stock."
+      : "Currently available.";
+    return [
+      priceLine,
+      stockLine,
+      sizes ? `Sizes: ${sizes}.` : "",
+      "Want details or should I add it?"
+    ].filter(Boolean).join("\n");
   }
 
   if (message.includes("detail") || message.includes("details") || message.includes("more info")) {
-    const description = product.description ? `${product.description}.` : "";
-    return `${priceLine} ${description} ${sizes ? `Sizes available: ${sizes}.` : ""} Would you like me to show similar options too?`.trim();
+    return [
+      priceLine,
+      product.description ? product.description : "",
+      sizes ? `Sizes: ${sizes}.` : "",
+      "Want this one or similar options?"
+    ].filter(Boolean).join("\n");
   }
 
   if (message.includes("price") || message.includes("cost") || message.includes("how much")) {
-    return `${priceLine} ${sizes ? `Sizes available: ${sizes}.` : ""} Would you like similar options in the same budget too?`.trim();
+    return [
+      priceLine,
+      sizes ? `Sizes: ${sizes}.` : "",
+      "Want me to add it or show similar options?"
+    ].filter(Boolean).join("\n");
   }
 
-  return null;
+  return buildVariantSelectionReply(product);
 }
 
 function pickReason(product, latestMessage) {
@@ -362,11 +730,11 @@ function buildBudgetRecommendationResponse(products, latestMessage, tenant = {})
     .slice(0, 3);
 
   if (matches.length === 0) {
-    return `I’m not seeing an in-stock option in ${budget.label} right now. If you want, I can show the closest available styles just above that budget.`;
+    return `I’m not seeing an in-stock option in ${budget.label}.\nI can show the closest options just above that budget.`;
   }
 
-  const lines = matches.map((product) => `${product.name} - ${formatMoney(product.price, currency)}. ${pickReason(product, latestMessage)}`);
-  return `Here are ${matches.length} options in ${budget.label}:\n\n${lines.join("\n")}\n\nIf you want, I can narrow these by minimalist, trendy, or premium style too.`;
+  const lines = matches.map((product) => `- ${product.name} - ${formatMoney(product.price, currency)}`);
+  return `Options in ${budget.label}:\n${lines.join("\n")}\nWhich one do you want?`;
 }
 
 function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, latestMessage, tenant }) {
@@ -397,8 +765,23 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
     `Commerce mode: ${commerceMode}.`,
     `Product source of truth for this tenant: ${productSource}.`,
     "Your job is to behave like the business itself: understand shopper intent, answer from the real catalog and FAQs, guide the shopper clearly, and move them toward the correct next step.",
-    "Always sound human, warm, concise, and confident.",
-    "Reply in 2-4 short sentences unless listing options.",
+    "Always sound human, short, clear, and confident.",
+    "DM style only. Do not sound like a brochure, catalog write-up, or customer support article.",
+    "Keep most replies to 1-3 short lines. Use 4 short lines max when needed.",
+    "Each reply should do one job only: answer, suggest, confirm, or ask for the next step.",
+    "Use plain chat language. Avoid long intros, filler, repeated compliments, and decorative adjectives.",
+    "Do not praise every selection. A simple 'Yes', 'Done', 'Perfect', or 'Got it' is enough.",
+    "Ask one clear question at the end, not two or three.",
+    "If the customer already chose an item, stop selling and move to add-to-cart or checkout.",
+    "After adding one item, do not show the full order summary right away.",
+    "After each add-to-cart step, reply in a short human way like: item added, 1 item in cart / 2 items in cart / 3 items in cart, then ask if they want anything else.",
+    "Do not list all cart items and totals after each product addition.",
+    "Only show the full order item list and total when the customer says they are done adding items or says no to adding more.",
+    "If the customer says no after 'anything else?', then move to a short order summary and ask if they are ready to checkout.",
+    "If the customer asks to see collections, give only 3-5 top categories or a few best picks first, not the full catalog dump.",
+    "If the customer asks for a category like jewelry, sarees, lehengas, shawls, or bangles, show only product names first. Do not include price, colors, sizes, or long descriptions in that first list.",
+    "Once the customer picks one product, ask for color or size next if those options exist. Do not dump variants before the customer chooses the product.",
+    "When asking for size, show only clean size labels like XS, S, M, L, XL, XXL, or Free Size by default. Do not show waist measurements or color-size combinations unless the customer specifically asks for detailed size info.",
     `Use the tenant's catalog currency consistently: ${currency.code} (${currency.symbol}).`,
     "Never switch to a different currency or invent currency symbols.",
     "Never invent price, stock, shipping time, size details, or discount approvals.",
@@ -406,34 +789,36 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
     "If the customer asks price, details, or availability and the message matches a product in the catalog, you must answer using that exact matched product name and exact database price first.",
     "Do not answer price questions with a broad collection range when an exact matched product price is available.",
     "Only mention a general price range if the customer explicitly asks for options by budget and no single product is clearly identified.",
-    "If the customer asks price/details/availability, answer first with facts from the catalog, then ask one useful selling question.",
+    "If the customer asks price/details/availability, answer first with facts from the catalog, then ask one useful next-step question.",
+    "If the customer asks for new arrivals, best sellers, top rated items, deals, offers, or promotions, show only 2-3 relevant products from that catalog segment.",
     budgetPrompt
       ? `If budget is missing and recommendations would help, ask for budget using sensible catalog-based choices such as: ${budgetPrompt}.`
       : "If budget is missing and recommendations would help, ask for the customer's preferred budget range in the catalog's currency.",
     "Do not ask for budget as the first move unless the customer is explicitly asking for options by range or wants recommendations without naming a specific product.",
     "If style is missing and recommendations would help, ask whether they prefer minimalist, trendy, or premium.",
-    "When recommending products, suggest only 2-3 options and briefly say why each matches.",
+    "When recommending products, suggest only 2-3 options.",
+    "Keep product descriptions very short unless the customer asks for more.",
     "Use occasion questions only while the customer is still deciding what to buy or when occasion helps narrow the recommendation. Once the customer has chosen an item, do not keep asking about occasion unless it is still truly needed.",
     shopifyCheckoutReady
-      ? "For Shopify checkout tenants, switch into cart mode once the customer clearly selects an item: confirm the exact item, clarify variant or quantity only if needed, say the item is added to cart, and ask if they want to add anything else to the order."
+      ? "For Shopify checkout tenants, switch into cart mode once the customer clearly selects an item: confirm the exact item, clarify variant or quantity only if needed, say it is added, mention the cart item count in a short way, and ask if they want anything else."
       : "If the customer clearly wants to buy, confirm the product, confirm quantity, and collect enough details for the next manual business step.",
     shopifyCheckoutReady
       ? "When the customer says they are done adding items, stop recommending products and switch into checkout preparation mode."
       : "When the customer is ready to buy, move to the next manual business step without adding extra friction.",
     shopifyCheckoutReady
-      ? "For Shopify checkout tenants, collect only the minimum chat details needed before checkout: full name first, then phone number with country code. Do not ask for occasion at this stage if the item is already chosen."
+      ? "For Shopify checkout tenants, collect only the minimum chat details needed before checkout. Ask for full name and phone number with country code together in one message. Do not ask for occasion at this stage if the item is already chosen."
       : "If checkout is not active, collect only the details the business needs for the next manual step.",
     shopifyCheckoutReady
       ? "Do not ask for full shipping address in one messy message. If address collection is needed in chat later, ask for it in structured parts."
       : "Keep customer detail collection simple and relevant.",
     "If the customer asks for custom design, unusual discount, negotiation, complaint handling, or something unclear after repeated back-and-forth, hand off to the team.",
     "If human handoff is needed, end with HUMAN_HANDOFF|[session_id].",
-    "If the customer is ready to buy, collect name, occasion, preferred contact method, then contact detail, confirm quantity, and end with HANDOFF_READY|[name]|[occasion]|[contact_method]|[contact_detail]|[product_interest]|[quantity]. Use quantity 1 if they do not specify a number.",
+    "If the customer is ready to buy, collect the minimum details with as little friction as possible. For checkout-style flows, ask for full name and phone number together in one message. Then confirm quantity and end with HANDOFF_READY|[name]|[occasion]|[contact_method]|[contact_detail]|[product_interest]|[quantity]. Use quantity 1 if they do not specify a number.",
     shopifyCheckoutReady
       ? 'If this tenant has Shopify checkout available and the customer is clearly ready to check out, end with SHOPPING_INTENT_JSON:{"action":"create_checkout","product_interest":"...","quantity":1,"customer_name":"...","occasion":"...","contact_method":"...","contact_detail":"..."} on its own final line. Use it only after the customer has finished adding items and confirmed they want to proceed. Keep it valid JSON and use the same details already collected in the conversation.'
       : "Do not mention Shopify or checkout links unless the backend confirms this tenant is ready for that flow.",
     shopifyCheckoutReady
-      ? "Before checkout, show a short order summary in normal language: selected item(s), quantity, total, and customer details collected so far, then ask for confirmation."
+      ? "Before checkout, show a very short order summary in chat style only after the customer is done adding items: list the items, total, key customer details, then ask for confirmation."
       : "Before finalizing any purchase, briefly confirm the key order details in normal language.",
     shopifyCheckoutReady
       ? "Important safety rule: a checkout link means checkout is ready, not that payment succeeded. Never say the order is confirmed or paid until the backend tells you that success is verified."
@@ -458,5 +843,8 @@ module.exports = {
   findMatchingProducts,
   buildProductResponse,
   buildBudgetRecommendationResponse,
+  buildCollectionResponse,
+  buildCategoryListingResponse,
+  buildBrowseListingResponse,
   parseBudgetFromText
 };
