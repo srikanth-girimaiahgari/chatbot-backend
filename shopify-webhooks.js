@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const express = require("express");
+const https = require("https");
 
 function timingSafeEqualBase64(a, b) {
   try {
@@ -37,7 +38,7 @@ async function findTenantForWebhook(supabase, storeDomain) {
 
   const { data, error } = await supabase
     .from("tenants")
-    .select("id,business_name,shopify_store_domain,shopify_webhook_secret,shopify_webhook_status")
+    .select("id,business_name,shopify_store_domain,shopify_webhook_secret,shopify_webhook_status,ig_access_token,wa_access_token,wa_phone_number_id")
     .eq("shopify_store_domain", storeDomain)
     .maybeSingle();
 
@@ -88,6 +89,26 @@ function normalizeFinancialStatus(payload) {
   ).toLowerCase();
 }
 
+function extractShippingAddress(payload) {
+  return payload?.shipping_address || payload?.shippingAddress || payload?.customer?.default_address || null;
+}
+
+function formatShippingAddress(address) {
+  if (!address) return null;
+  const parts = [
+    address.name,
+    address.company,
+    address.address1,
+    address.address2,
+    [address.city, address.province_code || address.province].filter(Boolean).join(', '),
+    address.zip,
+    address.country_code || address.country
+  ].filter(Boolean).map((value) => String(value).trim()).filter(Boolean);
+
+  if (!parts.length) return null;
+  return parts.join(', ');
+}
+
 function extractNoteAttributes(payload) {
   const raw = payload?.note_attributes || payload?.noteAttributes || [];
   if (!Array.isArray(raw)) {
@@ -120,10 +141,30 @@ async function updateOrderFromWebhook({
     };
   }
 
+  const { data: existingOrder, error: existingOrderError } = await supabase
+    .from("orders")
+    .select("id,session_id,channel,customer_name,contact_method,contact_detail,status,payment_status,shopify_order_id,shopify_order_number,confirmed_at")
+    .eq("tenant_id", tenant.id)
+    .eq("id", linkedOrderId)
+    .maybeSingle();
+
+  if (existingOrderError) {
+    throw existingOrderError;
+  }
+
+  if (!existingOrder) {
+    return {
+      matched: false,
+      reason: `Linked DigiMaya order ${linkedOrderId} was not found for tenant`
+    };
+  }
+
   const financialStatus = normalizeFinancialStatus(payload);
+  const shippingAddress = formatShippingAddress(extractShippingAddress(payload));
   const shopifyOrderId = getPayloadOrderId(payload);
   const shopifyOrderNumber = getPayloadOrderNumber(payload);
   const isPaidEvent = topic === "orders/paid" || financialStatus === "paid";
+  const alreadyConfirmed = Boolean(existingOrder.confirmed_at) || existingOrder.payment_status === 'paid';
   const nextStatus = isPaidEvent ? "confirmed" : "order_created";
   const nextPaymentStatus = isPaidEvent
     ? "paid"
@@ -138,7 +179,7 @@ async function updateOrderFromWebhook({
     updated_at: timestamp
   };
 
-  if (isPaidEvent) {
+  if (isPaidEvent && !existingOrder.confirmed_at) {
     updatePayload.confirmed_at = timestamp;
   }
 
@@ -147,18 +188,11 @@ async function updateOrderFromWebhook({
     .update(updatePayload)
     .eq("tenant_id", tenant.id)
     .eq("id", linkedOrderId)
-    .select("id,status,payment_status,shopify_order_id,shopify_order_number,confirmed_at")
+    .select("id,session_id,channel,customer_name,contact_method,contact_detail,status,payment_status,shopify_order_id,shopify_order_number,confirmed_at")
     .maybeSingle();
 
   if (orderError) {
     throw orderError;
-  }
-
-  if (!updatedOrder) {
-    return {
-      matched: false,
-      reason: `Linked DigiMaya order ${linkedOrderId} was not found for tenant`
-    };
   }
 
   const cartUpdate = {
@@ -187,8 +221,100 @@ async function updateOrderFromWebhook({
 
   return {
     matched: true,
-    order: updatedOrder
+    order: updatedOrder,
+    shouldSendConfirmation: isPaidEvent && !alreadyConfirmed,
+    shippingAddress
   };
+}
+
+function buildPaidOrderConfirmationMessage(tenant, order, shippingAddress) {
+  const businessName = tenant?.business_name || "our store";
+  const orderNumber = order?.shopify_order_number ? `#${order.shopify_order_number}` : "your order";
+  const customerName = order?.customer_name ? `${order.customer_name}, ` : "";
+  const shippingLine = shippingAddress ? ` We will ship it to: ${shippingAddress}.` : "";
+  return `${customerName}your payment was received and ${orderNumber} is confirmed with ${businessName}.${shippingLine} If you need to correct any order or delivery details, reply here right away and our team will help before dispatch.`;
+}
+
+async function sendInstagramReply(recipientId, text, accessToken) {
+  if (!recipientId || !text || !accessToken) return;
+  await new Promise((resolve) => {
+    const body = JSON.stringify({ recipient: { id: recipientId }, message: { text } });
+    const req = https.request({
+      hostname: 'graph.instagram.com',
+      path: `/v21.0/me/messages?access_token=${accessToken}`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      res.on('data', () => {});
+      res.on('end', resolve);
+    });
+    req.on('error', (err) => {
+      console.error('Failed to send Instagram confirmation:', err.message);
+      resolve();
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+async function sendWhatsAppReply(toPhone, text, accessToken, phoneNumberId) {
+  if (!toPhone || !text || !accessToken || !phoneNumberId) return;
+  await new Promise((resolve) => {
+    const body = JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: toPhone,
+      type: 'text',
+      text: { body: text }
+    });
+    const req = https.request({
+      hostname: 'graph.facebook.com',
+      path: `/v21.0/${phoneNumberId}/messages`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        Authorization: `Bearer ${accessToken}`
+      }
+    }, (res) => {
+      res.on('data', () => {});
+      res.on('end', resolve);
+    });
+    req.on('error', (err) => {
+      console.error('Failed to send WhatsApp confirmation:', err.message);
+      resolve();
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+async function sendPaidOrderConfirmation({ supabase, tenant, order, shippingAddress }) {
+  if (!order?.session_id || !order?.channel) {
+    return;
+  }
+
+  const message = buildPaidOrderConfirmationMessage(tenant, order, shippingAddress);
+
+  if (order.channel === 'instagram' && tenant?.ig_access_token) {
+    await sendInstagramReply(order.session_id, message, tenant.ig_access_token);
+  } else if (order.channel === 'whatsapp' && tenant?.wa_access_token && tenant?.wa_phone_number_id) {
+    const phone = String(order.session_id || '').startsWith('wa_')
+      ? String(order.session_id).slice(3)
+      : String(order.session_id);
+    await sendWhatsAppReply(phone, message, tenant.wa_access_token, tenant.wa_phone_number_id);
+  } else {
+    return;
+  }
+
+  await supabase.from('chat_messages').insert({
+    session_id: order.session_id,
+    role: 'assistant',
+    content: message,
+    tenant_id: tenant.id
+  });
 }
 
 async function logWebhookEvent({
@@ -304,6 +430,15 @@ function createShopifyWebhookRouter({ supabase }) {
         topic,
         payload
       });
+
+      if (confirmation.shouldSendConfirmation && confirmation.order) {
+        await sendPaidOrderConfirmation({
+          supabase,
+          tenant,
+          order: confirmation.order,
+          shippingAddress: confirmation.shippingAddress
+        });
+      }
 
       await logWebhookEvent({
         supabase,
