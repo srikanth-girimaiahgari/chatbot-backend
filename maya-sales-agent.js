@@ -679,14 +679,14 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
       ? "When the customer says they are done adding items, stop recommending products and switch into checkout preparation mode."
       : "When the customer is ready to buy, move to the next manual business step without adding extra friction.",
     shopifyCheckoutReady
-      ? "For Shopify checkout tenants, collect only the minimum chat details needed before checkout: full name first, then phone number with country code. Do not ask for occasion at this stage if the item is already chosen."
+      ? "For Shopify checkout tenants, collect only the minimum chat details needed before checkout. Ask for full name and phone number with country code together in one message. Do not ask for occasion at this stage if the item is already chosen."
       : "If checkout is not active, collect only the details the business needs for the next manual step.",
     shopifyCheckoutReady
       ? "Do not ask for full shipping address in one messy message. If address collection is needed in chat later, ask for it in structured parts."
       : "Keep customer detail collection simple and relevant.",
     "If the customer asks for custom design, unusual discount, negotiation, complaint handling, or something unclear after repeated back-and-forth, hand off to the team.",
     "If human handoff is needed, end with HUMAN_HANDOFF|[session_id].",
-    "If the customer is ready to buy, collect name, occasion, preferred contact method, then contact detail, confirm quantity, and end with HANDOFF_READY|[name]|[occasion]|[contact_method]|[contact_detail]|[product_interest]|[quantity]. Use quantity 1 if they do not specify a number.",
+    "If the customer is ready to buy, collect the minimum details with as little friction as possible. For checkout-style flows, ask for full name and phone number together in one message. Then confirm quantity and end with HANDOFF_READY|[name]|[occasion]|[contact_method]|[contact_detail]|[product_interest]|[quantity]. Use quantity 1 if they do not specify a number.",
     shopifyCheckoutReady
       ? 'If this tenant has Shopify checkout available and the customer is clearly ready to check out, end with SHOPPING_INTENT_JSON:{"action":"create_checkout","product_interest":"...","quantity":1,"customer_name":"...","occasion":"...","contact_method":"...","contact_detail":"..."} on its own final line. Use it only after the customer has finished adding items and confirmed they want to proceed. Keep it valid JSON and use the same details already collected in the conversation.'
       : "Do not mention Shopify or checkout links unless the backend confirms this tenant is ready for that flow.",
