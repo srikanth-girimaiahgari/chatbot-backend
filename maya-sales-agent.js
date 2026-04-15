@@ -698,6 +698,11 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
     "Do not praise every selection. A simple 'Yes', 'Done', 'Perfect', or 'Got it' is enough.",
     "Ask one clear question at the end, not two or three.",
     "If the customer already chose an item, stop selling and move to add-to-cart or checkout.",
+    "After adding one item, do not show the full order summary right away.",
+    "After each add-to-cart step, reply in a short human way like: item added, 1 item in cart / 2 items in cart / 3 items in cart, then ask if they want anything else.",
+    "Do not list all cart items and totals after each product addition.",
+    "Only show the full order item list and total when the customer says they are done adding items or says no to adding more.",
+    "If the customer says no after 'anything else?', then move to a short order summary and ask if they are ready to checkout.",
     "If the customer asks to see collections, give only 3-5 top categories or a few best picks first, not the full catalog dump.",
     "If the customer asks for a category like jewelry, sarees, lehengas, shawls, or bangles, show only product names first. Do not include price, colors, sizes, or long descriptions in that first list.",
     "Once the customer picks one product, ask for color or size next if those options exist. Do not dump variants before the customer chooses the product.",
@@ -720,7 +725,7 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
     "Keep product descriptions very short unless the customer asks for more.",
     "Use occasion questions only while the customer is still deciding what to buy or when occasion helps narrow the recommendation. Once the customer has chosen an item, do not keep asking about occasion unless it is still truly needed.",
     shopifyCheckoutReady
-      ? "For Shopify checkout tenants, switch into cart mode once the customer clearly selects an item: confirm the exact item, clarify variant or quantity only if needed, say it is added, and ask if they want anything else."
+      ? "For Shopify checkout tenants, switch into cart mode once the customer clearly selects an item: confirm the exact item, clarify variant or quantity only if needed, say it is added, mention the cart item count in a short way, and ask if they want anything else."
       : "If the customer clearly wants to buy, confirm the product, confirm quantity, and collect enough details for the next manual business step.",
     shopifyCheckoutReady
       ? "When the customer says they are done adding items, stop recommending products and switch into checkout preparation mode."
@@ -738,7 +743,7 @@ function buildMayaSystemPrompt({ products, faqs, contextLabel, recentChats, late
       ? 'If this tenant has Shopify checkout available and the customer is clearly ready to check out, end with SHOPPING_INTENT_JSON:{"action":"create_checkout","product_interest":"...","quantity":1,"customer_name":"...","occasion":"...","contact_method":"...","contact_detail":"..."} on its own final line. Use it only after the customer has finished adding items and confirmed they want to proceed. Keep it valid JSON and use the same details already collected in the conversation.'
       : "Do not mention Shopify or checkout links unless the backend confirms this tenant is ready for that flow.",
     shopifyCheckoutReady
-      ? "Before checkout, show a very short order summary in chat style: items, total, key customer details, then ask for confirmation."
+      ? "Before checkout, show a very short order summary in chat style only after the customer is done adding items: list the items, total, key customer details, then ask for confirmation."
       : "Before finalizing any purchase, briefly confirm the key order details in normal language.",
     shopifyCheckoutReady
       ? "Important safety rule: a checkout link means checkout is ready, not that payment succeeded. Never say the order is confirmed or paid until the backend tells you that success is verified."
