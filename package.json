@@ -1,7 +1,7 @@
 {
   "name": "DigiMaya",
   "version": "1.0.0",
-  "description": "",
+  "description": "Multi-tenant AI sales agent for businesses that sell through chat.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

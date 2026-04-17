@@ -1,6 +1,8 @@
 # DigiMaya
 
-DigiMaya is a multi-tenant AI system for online product businesses. Its job is to handle Instagram DMs, use each business's own catalog and FAQs, qualify buying intent, and now turn purchase-ready conversations into structured draft orders.
+DigiMaya is a multi-tenant AI DM sales agent for businesses that sell through chat. It handles customer conversations on Instagram and WhatsApp, uses each business's own catalog and FAQs, guides shoppers toward purchase, and turns purchase-ready chats into structured draft orders and checkout flow.
+
+Built with Node.js, Express, Supabase, Anthropic, Shopify, and Instagram/WhatsApp webhook flows.
 
 ## 20% Logic
 
