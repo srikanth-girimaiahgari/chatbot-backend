@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # SonarQube uses git history for blame/PR decoration.
+          fetch-depth: 0
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -29,8 +32,8 @@ jobs:
         run: npm audit --audit-level=moderate
         continue-on-error: true
       
-      - name: Trivy scan (lightweight)
-        uses: aquasecurity/trivy-action@master
+      - name: Trivy scan (repo filesystem)
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -39,6 +42,31 @@ jobs:
       - name: Run tests
         run: npm test
         continue-on-error: true
+
+      - name: SonarQube scan
+        if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_HOST_URL != '' }}
+        uses: SonarSource/sonarqube-scan-action@v7.1.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: >
+            "-Dsonar.projectKey=chatbot-backend"
+            "-Dsonar.projectName=DigiMaya"
+
+      - name: Build Docker image
+        run: docker build -t digimaya-backend:${{ github.sha }} .
+
+      - name: Trivy scan (docker image)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: 'digimaya-backend:${{ github.sha }}'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
       
       # - name: Deploy to Railway
       #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
