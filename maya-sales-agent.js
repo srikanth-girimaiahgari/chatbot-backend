@@ -259,7 +259,10 @@ function buildFaqText(faqs) {
 
 function splitAttributeValues(value) {
   if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim()).filter(Boolean);
+    return value
+      .flatMap((item) => String(item || "").split(/,|\/|\||;/))
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   return String(value || "")
@@ -295,18 +298,34 @@ function simplifySizeLabel(value) {
   return withoutMeasurement || raw;
 }
 
-function extractColorFromVariant(value) {
+function isLikelySizeValue(value) {
   const raw = cleanVariantFragment(value);
   if (!raw) {
-    return "";
+    return false;
   }
 
-  const slashParts = raw.split("/").map((part) => part.trim()).filter(Boolean);
-  if (slashParts.length > 1) {
-    return slashParts[slashParts.length - 1];
+  const normalized = raw.toUpperCase();
+  if (/\b(XXS|XS|S|M|L|XL|XXL|XXXL|FREE SIZE|FREE)\b/.test(normalized)) {
+    return true;
   }
 
-  return "";
+  if (/^\d{2,3}$/.test(raw)) {
+    return true;
+  }
+
+  if (/^\d{2,3}\s*-\s*\d{2,3}$/.test(raw)) {
+    return true;
+  }
+
+  if (/waist|size|inch|cm/i.test(raw)) {
+    return true;
+  }
+
+  return false;
+}
+
+function getVariantFragments(product) {
+  return splitAttributeValues(product?.sizes_in_stock);
 }
 
 function getProductColors(product) {
@@ -315,11 +334,17 @@ function getProductColors(product) {
     return uniqueValues(explicitColors);
   }
 
-  return uniqueValues(splitAttributeValues(product?.sizes_in_stock).map(extractColorFromVariant));
+  return uniqueValues(
+    getVariantFragments(product).filter((value) => !isLikelySizeValue(value))
+  );
 }
 
 function getProductSizes(product) {
-  return uniqueValues(splitAttributeValues(product?.sizes_in_stock).map(simplifySizeLabel));
+  return uniqueValues(
+    getVariantFragments(product)
+      .filter(isLikelySizeValue)
+      .map(simplifySizeLabel)
+  );
 }
 
 function buildVariantSelectionReply(product) {
