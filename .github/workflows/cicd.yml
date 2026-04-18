@@ -1,0 +1,48 @@
+name: Minimal CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  pull_request:
+    branches:
+      - main
+      - development
+
+jobs:
+  security-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: npm audit (find vulnerabilities)
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+      
+      - name: Trivy scan (lightweight)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Run tests
+        run: npm test
+        continue-on-error: true
+      
+      # - name: Deploy to Railway
+      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      #   run: |
+      #     curl -X POST https://railway.app/api/v1/deploy \
+      #       -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+      #       -H "Content-Type: application/json"
