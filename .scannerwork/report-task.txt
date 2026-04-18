@@ -1,0 +1,6 @@
+projectKey=chatbox-backend
+serverUrl=http://localhost:9000
+serverVersion=26.4.0.121862
+dashboardUrl=http://localhost:9000/dashboard?id=chatbox-backend
+ceTaskId=4d83af99-9048-4850-92db-e062fbbc39b0
+ceTaskUrl=http://localhost:9000/api/ce/task?id=4d83af99-9048-4850-92db-e062fbbc39b0

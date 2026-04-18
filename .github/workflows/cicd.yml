@@ -49,7 +49,7 @@ jobs:
         continue-on-error: true
 
       - name: SonarQube scan
-        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        # if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
         uses: SonarSource/sonarqube-scan-action@v7.1.0
         env:
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
@@ -57,7 +57,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: >
-            "-Dsonar.projectKey=chatbot-backend"
+            "-Dsonar.projectKey=chatbox-backend-1"
             "-Dsonar.projectName=DigiMaya"
 
       - name: Build Docker image
