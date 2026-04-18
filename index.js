@@ -337,7 +337,7 @@ function mapShopifyProductsForConversation(products = []) {
       in_stock: Boolean((product.total_inventory ?? 0) > 0 || firstAvailableVariant?.available_for_sale),
       sizes_in_stock: variants.map((variant) => variant.title).filter(Boolean),
       product_url: product.online_store_url || null,
-      image_url: null,
+      image_url: product.image_url || null,
       category: [],
       style: [],
       occasion: []
@@ -1058,13 +1058,40 @@ async function getMayaReplyForInstagram(senderId, messageText, tenant) {
   }
 }
 
-async function sendReply(recipientId, text, accessToken) {
-  return new Promise((resolve) => {
-    const body = JSON.stringify({
-      recipient: { id: recipientId },
-      message: { text },
-    });
+function parseOutboundMedia(text) {
+  const lines = String(text || "").split("\n");
+  let imageUrl = "";
+  const cleanedLines = [];
 
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      cleanedLines.push("");
+      continue;
+    }
+
+    if (/^Image:\s+/i.test(trimmed)) {
+      imageUrl = trimmed.replace(/^Image:\s+/i, "").trim();
+      continue;
+    }
+
+    if (/^Link:\s+/i.test(trimmed)) {
+      cleanedLines.push(trimmed.replace(/^Link:\s+/i, "").trim());
+      continue;
+    }
+
+    cleanedLines.push(trimmed);
+  }
+
+  return {
+    imageUrl,
+    text: cleanedLines.join("\n").replace(/\n{3,}/g, "\n\n").trim()
+  };
+}
+
+function sendInstagramApiMessage(payload, accessToken) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify(payload);
     const options = {
       hostname: "graph.instagram.com",
       path: `/v21.0/me/messages?access_token=${accessToken}`,
@@ -1080,19 +1107,51 @@ async function sendReply(recipientId, text, accessToken) {
       let data = "";
       res.on("data", (chunk) => { data += chunk; });
       res.on("end", () => {
-        console.log("Reply sent:", data);
+        console.log("Instagram reply sent:", data);
         resolve();
       });
     });
 
     req.on("error", (err) => {
-      console.error("Failed to send reply:", err.message);
+      console.error("Failed to send Instagram reply:", err.message);
       resolve();
     });
 
     req.write(body);
     req.end();
   });
+}
+
+async function sendInstagramTextReply(recipientId, text, accessToken) {
+  return sendInstagramApiMessage({
+    recipient: { id: recipientId },
+    message: { text },
+  }, accessToken);
+}
+
+async function sendInstagramImageReply(recipientId, imageUrl, accessToken) {
+  return sendInstagramApiMessage({
+    recipient: { id: recipientId },
+    message: {
+      attachment: {
+        type: "image",
+        payload: {
+          url: imageUrl,
+          is_reusable: false
+        }
+      }
+    },
+  }, accessToken);
+}
+
+async function sendReply(recipientId, text, accessToken) {
+  const parsed = parseOutboundMedia(text);
+  if (parsed.imageUrl) {
+    await sendInstagramImageReply(recipientId, parsed.imageUrl, accessToken);
+  }
+  if (parsed.text) {
+    await sendInstagramTextReply(recipientId, parsed.text, accessToken);
+  }
 }
 
 // ── WhatsApp: Maya AI reply ───────────────────────────────────────────────────
@@ -1244,14 +1303,9 @@ async function getMayaReplyForWhatsApp(senderPhone, messageText, tenant) {
 }
 
 // ── WhatsApp: send reply via Cloud API ───────────────────────────────────────
-async function sendWhatsAppReply(toPhone, text, accessToken, phoneNumberId) {
+function sendWhatsAppApiMessage(payload, accessToken, phoneNumberId) {
   return new Promise((resolve) => {
-    const body = JSON.stringify({
-      messaging_product: "whatsapp",
-      to: toPhone,
-      type: "text",
-      text: { body: text },
-    });
+    const body = JSON.stringify(payload);
 
     const options = {
       hostname: "graph.facebook.com",
@@ -1282,6 +1336,39 @@ async function sendWhatsAppReply(toPhone, text, accessToken, phoneNumberId) {
     req.write(body);
     req.end();
   });
+}
+
+async function sendWhatsAppTextReply(toPhone, text, accessToken, phoneNumberId) {
+  return sendWhatsAppApiMessage({
+    messaging_product: "whatsapp",
+    to: toPhone,
+    type: "text",
+    text: { body: text },
+  }, accessToken, phoneNumberId);
+}
+
+async function sendWhatsAppImageReply(toPhone, imageUrl, caption, accessToken, phoneNumberId) {
+  return sendWhatsAppApiMessage({
+    messaging_product: "whatsapp",
+    to: toPhone,
+    type: "image",
+    image: {
+      link: imageUrl,
+      ...(caption ? { caption } : {})
+    },
+  }, accessToken, phoneNumberId);
+}
+
+async function sendWhatsAppReply(toPhone, text, accessToken, phoneNumberId) {
+  const parsed = parseOutboundMedia(text);
+  if (parsed.imageUrl) {
+    await sendWhatsAppImageReply(toPhone, parsed.imageUrl, parsed.text, accessToken, phoneNumberId);
+    return;
+  }
+
+  if (parsed.text) {
+    await sendWhatsAppTextReply(toPhone, parsed.text, accessToken, phoneNumberId);
+  }
 }
 
 app.get("/products", async (req, res) => {

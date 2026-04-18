@@ -164,6 +164,7 @@ function mapShopifyProduct(product) {
     short_title: buildShopifyShortTitle(product.title),
     handle: product.handle,
     online_store_url: product.onlineStoreUrl || null,
+    image_url: product.featuredImage?.url || null,
     total_inventory: product.totalInventory ?? null,
     variants
   };
@@ -228,6 +229,9 @@ async function fetchTenantShopifyProducts({ supabase, tenantId, limit = 20 }) {
               title
               handle
               onlineStoreUrl
+              featuredImage {
+                url
+              }
               totalInventory
               variants(first: 25) {
                 edges {
