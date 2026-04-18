@@ -13,11 +13,6 @@ on:
 jobs:
   security-and-build:
     runs-on: ubuntu-latest
-    env:
-      # GitHub Actions does not allow referencing the `secrets` context in `if:` expressions.
-      # Workaround: map secrets to env and then reference `env.*` in conditionals.
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,18 +43,6 @@ jobs:
         run: npm test
         continue-on-error: true
 
-      - name: SonarQube scan
-        # if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
-        uses: SonarSource/sonarqube-scan-action@v7.1.0
-        env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: >
-            "-Dsonar.projectKey=chatbox-backend-1"
-            "-Dsonar.projectName=DigiMaya"
-
       - name: Build Docker image
         run: docker build -t digimaya-backend:${{ github.sha }} .
 
@@ -79,3 +62,34 @@ jobs:
       #     curl -X POST https://railway.app/api/v1/deploy \
       #       -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
       #       -H "Content-Type: application/json"
+
+  sonarqube:
+    # Run SonarQube scan on a self-hosted runner that can reach your local SonarQube instance.
+    # Security: avoid running self-hosted runners for untrusted fork PRs.
+    if: ${{ github.event_name == 'push' }}
+    runs-on: self-hosted
+    env:
+      # GitHub Actions does not allow referencing the `secrets` context in `if:` expressions.
+      # Workaround: map secrets to env and then reference `env.*` in conditionals.
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check SonarQube reachable
+        if: ${{ env.SONAR_HOST_URL != '' }}
+        run: curl -fsS "${SONAR_HOST_URL}/api/server/version"
+
+      - name: SonarQube scan
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: SonarSource/sonarqube-scan-action@v7.1.0
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: >
+            "-Dsonar.projectKey=chatbox-backend-1"
+            "-Dsonar.projectName=DigiMaya"
