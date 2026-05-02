@@ -76,6 +76,18 @@ pipeline {
       }
     }
 
+    stage('Docker Debug') {
+        steps {
+            sh '''
+            echo "Checking socket"
+            ls -l /var/run/docker.sock
+
+            echo "Testing docker"
+            docker ps
+            '''
+        }
+        }
+
     stage('SonarQube scan') {
       when {
         expression { return env.SONAR_HOST_URL && env.SONAR_TOKEN }
