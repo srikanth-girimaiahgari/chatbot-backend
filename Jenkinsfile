@@ -17,6 +17,16 @@ pipeline {
         checkout scm
       }
     }
+    
+    stage('Debug Node') {
+    steps {
+        sh '''
+        which node
+        node -v
+        ldd $(which node) | grep atomic || true
+        '''
+        }
+    }
 
     stage('Install dependencies') {
       steps {
