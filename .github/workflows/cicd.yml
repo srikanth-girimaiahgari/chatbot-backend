@@ -3,8 +3,7 @@ name: Minimal CI/CD Pipeline
 on:
   push:
     branches:
-      - main
-      - development
+      - devops
   pull_request:
     branches:
       - main
