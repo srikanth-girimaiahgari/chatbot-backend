@@ -2,6 +2,7 @@ pipeline {
     agent {
     dockerContainer {
         image 'gsrikanth14/agent-cicd:1.0'
+        args '-v /var/run/docker.sock:/var/run/docker.sock'
     }
     }
 
