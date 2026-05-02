@@ -38,6 +38,8 @@ jobs:
 
   trivy-file-system-scan:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     needs: build
     steps:
       - uses: actions/checkout@v6.0.2
@@ -88,6 +90,8 @@ jobs:
 
   Docker-build-and-image-scan:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     needs: sonarqube
     steps:
       - uses: actions/checkout@v6.0.2
@@ -98,14 +102,43 @@ jobs:
         run: docker build -t digimaya-backend:${{ github.sha }} .
 
       - name: Trivy scan (docker image)
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          image-ref: 'digimaya-backend:${{ github.sha }}'
-          format: 'table'
-          exit-code: '0'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+        run: |
+          trivy image \
+            --format json \
+            --output trivy-image-report.json \
+            --exit-code 0 \
+            --severity CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN \
+            digimaya-backend:${{ github.sha }}
+
+          python3 <<'PY'
+          import json
+          import sys
+
+          with open('trivy-image-report.json', 'r') as f:
+              data = json.load(f)
+
+          counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
+          for result in data.get('Results', []):
+              for vuln in result.get('Vulnerabilities', []) or []:
+                  sev = vuln.get('Severity', 'UNKNOWN').upper()
+                  counts[sev] = counts.get(sev, 0) + 1
+
+          lines = [
+              'Severity | Count',
+              '---------|------',
+          ]
+          for sev in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']:
+              lines.append(f'{sev:8} | {counts[sev]}')
+          summary = '\n'.join(lines)
+          print(summary)
+          with open('trivy-image-summary.txt', 'w') as f:
+              f.write(summary + '\n')
+
+          critical = counts['CRITICAL']
+          if critical > 0:
+              print(f'\nERROR: {critical} critical vulnerability(ies) found.')
+              sys.exit(1)
+                    PY
       
       # - name: Deploy to Railway
       #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
