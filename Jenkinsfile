@@ -6,7 +6,7 @@ pipeline {
     }
 
   environment {
-    DOCKER_IMAGE = "digimaya-backend:${env.BUILD_ID}"
+    DOCKER_IMAGE = "digimaya-backend:${env.BUILD_NUMBER}"
     SONAR_PROJECT_KEY = 'DigiMaya'
     SONAR_PROJECT_NAME = 'DigiMaya'
   }

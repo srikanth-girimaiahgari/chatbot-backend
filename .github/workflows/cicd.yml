@@ -92,6 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      IMAGE_TAG: ${{ github.run_number }}
     needs: sonarqube
     steps:
       - uses: actions/checkout@v6.0.2
@@ -99,17 +100,13 @@ jobs:
           fetch-depth: 0
 
       - name: Build Docker image
-        run: docker build -t digimaya-backend:${{ github.sha }} .
+        run: docker build -t digimaya-backend:${{ env.IMAGE_TAG }} .
 
       - name: Install Trivy
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          trivy --version \
-            --format json \
-            --output trivy-image-report.json \
-            --exit-code 0 \
-            --severity CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN \
-            digimaya-backend:${{ github.sha }}
+          trivy --version
+          trivy image --format json --output trivy-image-report.json --exit-code 0 --severity CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN digimaya-backend:${{ env.IMAGE_TAG }}
 
           python3 <<'PY'
           import json
