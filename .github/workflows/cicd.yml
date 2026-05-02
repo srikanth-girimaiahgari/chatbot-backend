@@ -101,9 +101,11 @@ jobs:
       - name: Build Docker image
         run: docker build -t digimaya-backend:${{ github.sha }} .
 
-      - name: Trivy scan (docker image)
+      - name: Install Trivy
         run: |
-          trivy image \
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+          trivy --version
+
             --format json \
             --output trivy-image-report.json \
             --exit-code 0 \
