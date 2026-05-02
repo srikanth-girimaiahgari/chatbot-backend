@@ -104,8 +104,7 @@ jobs:
       - name: Install Trivy
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          trivy --version
-
+          trivy --version \
             --format json \
             --output trivy-image-report.json \
             --exit-code 0 \
