@@ -18,12 +18,30 @@ pipeline {
       }
     }
     
-    stage('Debug Node') {
+    stage('Debug Environment') {
     steps {
         sh '''
-        which node
-        node -v
-        ldd $(which node) | grep atomic || true
+        echo "===== BASIC INFO ====="
+        whoami
+        pwd
+        hostname
+
+        echo "===== OS INFO ====="
+        cat /etc/os-release || true
+        uname -a
+
+        echo "===== PATH ====="
+        echo $PATH
+
+        echo "===== NODE LOCATION ====="
+        which node || true
+
+        echo "===== NODE LINKAGE ====="
+        ldd $(which node) || true
+
+        echo "===== LIB CHECK ====="
+        ls -l /usr/lib*/libatomic* || true
+        ls -l /lib*/libatomic* || true
         '''
         }
     }
