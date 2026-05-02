@@ -13,8 +13,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  security-and-build:
+  build:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -33,21 +35,29 @@ jobs:
       - name: npm audit (find vulnerabilities)
         run: npm audit --audit-level=moderate
         continue-on-error: true
-      
+
+  trivy-file-system-scan:
+    runs-on: ubuntu-latest  
+    steps:
       - name: Trivy scan (repo filesystem)
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
           severity: 'CRITICAL,HIGH'
-      
-      # - name: Run tests
-      #   run: npm test
-      #   continue-on-error: true
-
+        
+        # - name: Run tests
+        #   run: npm test
+        #   continue-on-error: true
+  Docker-build:
+    runs-on: ubuntu-latest  
+    steps:
       - name: Build Docker image
         run: docker build -t digimaya-backend:${{ github.sha }} .
 
+  Image-Scan:
+    runs-on: ubuntu-latest  
+    steps:
       - name: Trivy scan (docker image)
         uses: aquasecurity/trivy-action@v0.35.0
         with:
