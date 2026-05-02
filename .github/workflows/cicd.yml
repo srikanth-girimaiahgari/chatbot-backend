@@ -106,7 +106,24 @@ jobs:
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
           trivy --version
-          trivy image --format json --output trivy-image-report.json --exit-code 0 --severity CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN digimaya-backend:${{ env.IMAGE_TAG }}
+
+      - name: Trivy scan (docker image)
+        run: |
+          trivy image \
+            --format json \
+            --output trivy-image-report.json \
+            --exit-code 0 \
+            --severity CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN \
+            digimaya-backend:${{ env.IMAGE_TAG }}
+
+          trivy image \
+            --format table \
+            --output trivy-image-table.txt \
+            --exit-code 0 \
+            --severity CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN \
+            digimaya-backend:${{ env.IMAGE_TAG }}
+
+          cat trivy-image-table.txt
 
           python3 <<'PY'
           import json
@@ -121,19 +138,28 @@ jobs:
                   sev = vuln.get('Severity', 'UNKNOWN').upper()
                   counts[sev] = counts.get(sev, 0) + 1
 
-          lines = [
-              'Severity | Count',
-              '---------|------',
-          ]
+          print('Severity | Count')
+          print('---------|------')
           for sev in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']:
-              lines.append(f'{sev:8} | {counts[sev]}')
-          summary = '\n'.join(lines)
-          print(summary)
+              print(f'{sev:8} | {counts[sev]}')
+
           with open('trivy-image-summary.txt', 'w') as f:
-              f.write(summary + '\n')
+              f.write('Severity | Count\n')
+              f.write('---------|------\n')
+              for sev in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']:
+                  f.write(f'{sev:8} | {counts[sev]}\n')
 
           critical = counts['CRITICAL']
           if critical > 0:
               print(f'\nERROR: {critical} critical vulnerability(ies) found.')
               sys.exit(1)
           PY
+
+      - name: Upload Trivy reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports
+          path: |
+            trivy-image-report.json
+            trivy-image-table.txt
+            trivy-image-summary.txt

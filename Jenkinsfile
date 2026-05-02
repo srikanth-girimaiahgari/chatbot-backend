@@ -1,9 +1,10 @@
 pipeline {
-  agent any
-
-  tools {
-        nodejs 'npm'
+   agent {
+    docker {
+      image 'gsrikanth14/agent-cicd:1.0'
+      args '-v /var/run/docker.sock:/var/run/docker.sock'
     }
+  }
 
   environment {
     DOCKER_IMAGE = "digimaya-backend:${env.BUILD_NUMBER}"
