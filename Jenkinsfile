@@ -1,9 +1,5 @@
 pipeline {
-    agent {
-    dockerContainer {
-        image 'gsrikanth14/agent-cicd:1.0'
-    }
-    }
+    agent any
 
   environment {
     DOCKER_IMAGE = "digimaya-backend:${env.BUILD_NUMBER}"
