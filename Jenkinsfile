@@ -63,6 +63,18 @@ pipeline {
         sh 'trivy fs --severity CRITICAL,HIGH .'
       }
     }
+    
+    stage('Docker Debug') {
+        steps {
+            sh '''
+            echo "Checking socket"
+            ls -l /var/run/docker.sock
+
+            echo "Testing docker"
+            docker ps
+            '''
+        }
+    }
 
     stage('Build Docker image') {
       steps {
@@ -75,18 +87,6 @@ pipeline {
         sh 'trivy image --severity CRITICAL,HIGH ${DOCKER_IMAGE}'
       }
     }
-
-    stage('Docker Debug') {
-        steps {
-            sh '''
-            echo "Checking socket"
-            ls -l /var/run/docker.sock
-
-            echo "Testing docker"
-            docker ps
-            '''
-        }
-        }
 
     stage('SonarQube scan') {
       when {
