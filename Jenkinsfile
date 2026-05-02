@@ -1,6 +1,10 @@
 pipeline {
   agent any
 
+  tools {
+        nodejs 'npm'
+    }
+
   environment {
     DOCKER_IMAGE = "digimaya-backend:${env.BUILD_ID}"
     SONAR_PROJECT_KEY = 'DigiMaya'
