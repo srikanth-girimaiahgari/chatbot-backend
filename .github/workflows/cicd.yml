@@ -65,7 +65,7 @@ jobs:
   sonarqube:
     # Run SonarQube scan on a self-hosted runner that can reach your local SonarQube instance.
     # Security: avoid running self-hosted runners for untrusted fork PRs.
-    if: ${{ github.event_name == 'push' }}
+    # if: ${{ github.event_name == 'push' }}
     runs-on: self-hosted
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
